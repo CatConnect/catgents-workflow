@@ -39,6 +39,45 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ---
 
+## Clarification Protocol (mandatory throughout all phases)
+
+**Never assume architecture. Always ask.**
+
+Before making any decision that involves technology, design patterns, data structures, or tradeoffs, the orchestrator must surface the question to the user and wait for an answer. This applies at every phase.
+
+**Examples of decisions that require user confirmation:**
+- Which database, framework, library, or third-party service to use
+- Whether to create a new table/collection or extend an existing one
+- REST vs. event-based vs. GraphQL communication between specs
+- Whether a spec should be synchronous or async
+- Which existing code patterns or modules to follow
+- Whether to break backward compatibility
+- Any tradeoff between performance, simplicity, and correctness
+
+**How to surface questions:**
+1. After each subagent completes its output, read its `## Open Questions` section
+2. Collect all open questions across all specs in the current phase
+3. Present them to the user grouped by spec **before** proceeding to the next phase:
+
+```
+Before I proceed to [next phase], I need your input on:
+
+**spec-<id>: <concern>**
+- Q1: <question — one concrete tradeoff or decision>
+- Q2: ...
+
+**spec-<id>: <concern>**
+- Q3: ...
+
+Please answer each before I continue.
+```
+
+4. Incorporate the user's answers into the subagent prompts for the next phase as explicit constraints
+
+**Rule**: if a subagent makes an architectural assumption (e.g., "I'll use Redis for the queue") without evidence it exists in the project, flag it as an open question instead of accepting it.
+
+---
+
 ## Phase 0: Spec Decomposition
 
 **Goal**: Identify the minimal set of bounded specs that cover the feature.
@@ -100,7 +139,7 @@ Your task — stay strictly within your spec's concern:
 2. Write user stories in format: As a <role>, I want <action> so that <value>
 3. Define acceptance criteria — each must be binary (pass/fail), specific, observable
 4. List constraints: technical, security, performance, regulatory
-5. Flag open questions or risky assumptions as explicit items, not hidden decisions
+5. Flag EVERY open question or architectural assumption as an explicit item in ## Open Questions — never silently decide; if you don't know, ask
 
 Write output to: docs/specs/<feature>/<spec.id>/requirements.md
 
@@ -153,6 +192,8 @@ Your task — design components for THIS spec only:
 5. Document key technical decisions with rationale (why, not just what)
 6. Security and performance considerations specific to this spec
 
+CRITICAL: if you encounter a decision involving technology choice, design pattern, or tradeoff — DO NOT decide. Add it to ## Open Questions with a clear description of the options and tradeoffs. The user will answer before this architecture is accepted.
+
 Write output to: docs/design/<feature>/<spec.id>/architecture.md
 
 Output format:
@@ -163,6 +204,7 @@ Output format:
 ## Integration Points
 ## Technical Decisions
 ## Security & Performance
+## Open Questions
 ```
 
 **Quality check per subagent output:**
