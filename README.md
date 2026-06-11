@@ -1,20 +1,20 @@
-# CatConnect Agent Workflow
+# 🐱 CatAgents Workflow
 
-A generic, reusable AI-driven development workflow system. Works with any project type and any AI agent.
+> *"A cat doesn't plan — it pounces at exactly the right moment."*
 
-## Overview
+An AI-driven development workflow system built on parallel bounded-context subagents. Every feature gets decomposed into specs, every spec gets its own cat — focused, territorial, and impossible to distract.
 
-Three skills to transform ideas into production-ready code using **parallel bounded-context subagents**:
+## The Three Cats
 
-| Skill | Purpose | Version |
-|-------|---------|---------|
-| `/agent-init` | Set up workflow infrastructure | 1.0.0 |
-| `/agent-plan` | Decompose feature into specs → parallel subagents per spec | 2.0.0 |
-| `/agent-implement` | Implement via parallel task subagents driven by plan.md | 2.0.0 |
+| Skill | What It Does | Version |
+|-------|-------------|---------|
+| `/agent-init` | Sets up the litter box (project infrastructure) | 1.0.0 |
+| `/agent-plan` | Stalks the feature — decomposes into specs, dispatches a cat per spec in parallel | 2.0.0 |
+| `/agent-implement` | Pounces — parallel task cats execute the plan from `plan.md` | 2.0.0 |
 
 ## Quick Start
 
-### 1. Install in your project
+### 1. Claim your territory
 
 **Linux / macOS:**
 ```bash
@@ -28,19 +28,19 @@ git clone https://github.com/CatConnect/catgents-workflow.git
 .\catgents-workflow\install.ps1 your-project
 ```
 
-### 2. Initialize workflow
+### 2. Set up the litter box
 
 ```
 /agent-init
 ```
 
-### 3. Plan a feature
+### 3. Stalk the feature
 
 ```
 /agent-plan "Add user authentication with OAuth2"
 ```
 
-### 4. Implement the feature
+### 4. Pounce
 
 ```
 /agent-implement user-auth-oauth2
@@ -48,15 +48,15 @@ git clone https://github.com/CatConnect/catgents-workflow.git
 
 ---
 
-## How It Works (v2.0.0)
+## How It Works
 
-### agent-plan: Parallel Bounded-Context Planning
+### agent-plan: The Stalk
 
-Instead of a single agent analyzing the whole feature sequentially, `agent-plan` v2 runs in 4 phases:
+A cat never charges blindly — it studies, maps the territory, then acts. `agent-plan` works the same way:
 
-**Phase 0 — Spec Decomposition**
+**Phase 0 — Territorial Mapping 🗺️**
 
-The orchestrator breaks the feature into bounded specs — each spec covers exactly one domain concern (data model, API, UI component, auth rule, background job, etc.). The result is saved to `.agents/<feature>/decomposition.json`.
+The orchestrator decomposes the feature into bounded specs. Each spec is one territory — one domain concern, one cat's job. Result saved to `.agents/<feature>/decomposition.json`.
 
 Example for "notification system":
 ```
@@ -66,33 +66,41 @@ spec-ui-bell     →  header icon + dropdown component
 spec-job         →  async delivery worker
 ```
 
-**Phase 1–3 — Parallel Subagents**
+**Phases 1–3 — Parallel Cats 🐾**
 
-For each phase (Requirements → Architecture → Task Breakdown), independent specs are dispatched **simultaneously** as subagents via the `Agent` tool. Each subagent receives only:
-- Its spec's description and domain concern
+For each phase (Requirements → Architecture → Task Breakdown), independent specs are dispatched **simultaneously** as subagents via the `Agent` tool. Each cat receives only:
+- Its own territory's description
 - The contracts (inputs/outputs) of specs it depends on — not their internals
-- A short list of relevant existing files to read
+- A short list of relevant files to sniff around
 
-This means `spec-data-model` and `spec-job` analyze their requirements at the same time. `spec-api` — which depends on the data model — waits, then runs in the next batch.
+Cats that depend on each other hunt in sequence. Everyone else hunts at the same time.
 
-**Phase 4 — Cross-Spec Synthesis**
+**No assumptions allowed.** Whenever a cat encounters an architectural decision — tech choice, design tradeoff, pattern — it drops it in `## Open Questions` and the orchestrator asks the user before proceeding. Cats are territorial but they respect the owner.
 
-The orchestrator reads all per-spec task files, builds a cross-spec dependency graph, and writes `docs/tasks/<feature>/plan.md` with topologically-sorted execution batches.
+**Phase 4 — The Pride 🦁**
 
-### agent-implement: Parallel Task Execution
+The orchestrator synthesizes all per-spec outputs into `docs/tasks/<feature>/plan.md` — a topologically-sorted execution plan with parallel batches.
 
-`agent-implement` reads `plan.md` and dispatches each independent task batch in parallel. Each task subagent receives only its own task description, acceptance criteria, and the files it needs to touch.
+### agent-implement: The Pounce
+
+Reads `plan.md` and dispatches independent tasks in parallel. Each task cat gets only:
+- Its task description and acceptance criteria
+- Its spec's architecture and requirements docs
+- The specific files it needs to touch
+
+One cat per task. Focused. No distractions.
 
 ---
 
-## Why Parallel Subagents
+## Why One Cat Per Spec
 
 | Problem | Solution |
 |---------|----------|
-| Long contexts bury relevant information (Liu et al., 2023 — *Lost in the Middle*) | Each subagent gets a short, focused context with its spec at the top |
-| Single agent drifts between domains | Each subagent has a single, fixed role and scope |
-| Sequential planning is slow for large features | Independent specs run concurrently |
-| Errors in one domain contaminate reasoning in another | Bounded context prevents cross-spec error cascade |
+| Long contexts bury relevant info (*Lost in the Middle*, Liu et al. 2023) | Each cat gets a short, focused context — its prey is always at the top |
+| Single agent drifts between domains | Each cat has one territory and cannot leave it |
+| Sequential planning is slow | Independent cats hunt concurrently |
+| Errors in one domain contaminate others | Bounded context = no cross-territory interference |
+| Architect assumes tech stack | Cats ask. Always. |
 
 ---
 
@@ -104,7 +112,7 @@ After `/agent-plan <feature>`:
 your-project/
 ├── .agents/
 │   └── <feature>/
-│       └── decomposition.json      ← spec graph with contracts
+│       └── decomposition.json        ← territorial map with contracts
 ├── docs/
 │   ├── specs/
 │   │   └── <feature>/
@@ -124,7 +132,7 @@ your-project/
 │           │   └── tasks.md
 │           ├── spec-api/
 │           │   └── tasks.md
-│           └── plan.md             ← unified execution batches
+│           └── plan.md               ← the hunt order
 ```
 
 ---
@@ -134,47 +142,51 @@ your-project/
 ```
 /agent-plan <feature>
 │
-├── Phase 0: Spec Decomposition
+├── 🗺️  Territorial Mapping
 │   └── .agents/<feature>/decomposition.json
 │
-├── Phase 1: Requirements (parallel per spec)
-│   ├── [Batch 1 simultaneous] spec-A subagent → docs/specs/.../requirements.md
-│   │                          spec-B subagent → docs/specs/.../requirements.md
-│   └── [Batch 2 after Batch 1] spec-C subagent → docs/specs/.../requirements.md
+├── 🔍  Requirements (parallel cats)
+│   ├── [Batch 1] 🐱 spec-A cat ──► docs/specs/.../requirements.md
+│   │             🐱 spec-B cat ──► docs/specs/.../requirements.md
+│   └── [Batch 2] 🐱 spec-C cat ──► docs/specs/.../requirements.md
+│           ↕
+│     ❓ Orchestrator asks user about open questions before next phase
 │
-├── Phase 2: Architecture (parallel per spec, same batching)
+├── 🏗️  Architecture (parallel cats, same batching)
+│           ↕
+│     ❓ Orchestrator asks user about open questions before next phase
 │
-├── Phase 3: Task Breakdown (parallel per spec, same batching)
+├── 📋  Task Breakdown (parallel cats, same batching)
 │
-└── Phase 4: Synthesis → docs/tasks/<feature>/plan.md
+└── 🦁  Pride Synthesis ──► docs/tasks/<feature>/plan.md
 
 
 /agent-implement <feature>
 │
 ├── Read plan.md → execution batches
 │
-├── [Batch 1 simultaneous] task-X subagent → implements, runs tests, reports PASS/FAIL
-│                          task-Y subagent → implements, runs tests, reports PASS/FAIL
+├── [Batch 1] 🐱 task-X cat ──► implements, tests, reports PASS/FAIL
+│             🐱 task-Y cat ──► implements, tests, reports PASS/FAIL
 │
-├── [Batch 2 after Batch 1] task-Z subagent → ...
+├── [Batch 2 after Batch 1] 🐱 task-Z cat ──► ...
 │
-└── Final: full test suite + acceptance criteria verification
+└── 🎯 Final: full test suite + acceptance criteria verification
 ```
 
 ---
 
 ## Quality Gates
 
-### Planning (85/100 threshold)
+### The Purr Test — Planning (85/100)
 - All specs have requirements, architecture, and task docs
 - Requirements are testable (binary, not vague)
-- Architecture has no TBD data models
-- Tasks are atomic (S or M only — no L tasks)
+- Architecture has no TBD fields
+- Tasks are atomic (S or M — no hairballs)
 - Cross-spec dependencies resolved in `plan.md`
 
-### Implementation (80/100 threshold)
+### The Nine Lives Check — Implementation (80/100)
 - Code follows existing conventions
-- Every acceptance criterion explicitly verified (PASS/FAIL)
+- Every acceptance criterion explicitly PASS/FAIL
 - Tests run and pass
 - No regressions
 
@@ -182,7 +194,7 @@ your-project/
 
 ## Customization
 
-Edit `.agents/config.json` to adjust quality thresholds:
+Edit `.agents/config.json` to tune the thresholds:
 
 ```json
 {
@@ -198,7 +210,7 @@ Edit `.agents/config.json` to adjust quality thresholds:
 
 ## Compatibility
 
-Works with any project type: React, Next.js, Vue, Angular, Node.js, Python, Go, Rust, Java, or any framework.
+Works with any project: React, Next.js, Vue, Angular, Node.js, Python, Go, Rust, Java — any language, any framework. Cats adapt.
 
 ## License
 

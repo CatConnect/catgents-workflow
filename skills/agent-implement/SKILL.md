@@ -1,20 +1,22 @@
 ---
 name: "agent-implement"
-description: "Implement planned features by reading plan.md and dispatching each independent task batch to parallel subagents — each subagent receives only its task's acceptance criteria, architecture, and relevant files"
+description: "The pounce — reads plan.md and dispatches each independent task batch as parallel cats, each one focused only on its own prey (task acceptance criteria, architecture, and relevant files)"
 compatibility: "Requires agent-plan to be run first"
 metadata:
   author: "catconnect"
   version: "2.0.0"
 ---
 
-## Design Principles
+## How Cats Pounce
 
-Same bounded-context philosophy as `agent-plan`: each task gets a subagent with exactly the context it needs. The orchestrator manages sequencing via `plan.md`, dispatches parallel batches, collects outputs, and runs quality gates.
+A cat doesn't think about the whole mouse while pouncing on the tail. It focuses entirely on the part in front of it.
 
-**Why subagents per task:**
-- A task subagent's context window contains only its task description, acceptance criteria, and relevant files — not the full plan and not other tasks' code
-- This keeps the subagent's attention on its specific acceptance criteria, reducing hallucination on irrelevant API surface
+`agent-implement` works the same way: each task gets its own cat with only the context it needs — not the full plan, not other tasks' code, not the entire codebase. One cat, one task, complete focus.
+
+**Why one cat per task:**
+- Each task cat's context window contains only its acceptance criteria and relevant files — no irrelevant API surface to hallucinate against
 - Parallel dispatch of independent tasks reduces total wall-clock time proportionally to concurrency
+- Failures are isolated — one cat missing doesn't cascade to the rest of the hunt
 
 ## User Input
 
@@ -22,101 +24,101 @@ Same bounded-context philosophy as `agent-plan`: each task gets a subagent with 
 $ARGUMENTS
 ```
 
-Feature name is taken from `$ARGUMENTS`. If empty, detect from the most recently modified `docs/tasks/*/plan.md`.
+Feature name from `$ARGUMENTS`. If empty, detect from the most recently modified `docs/tasks/*/plan.md`.
 
-## Pre-Execution Checks
+## Pre-Pounce Checks
 
-1. Locate `docs/tasks/<feature>/plan.md` — if not found: ERROR "Run `/agent-plan <feature>` first"
+1. Find `docs/tasks/<feature>/plan.md` — if missing: ERROR "No hunt plan found. Run `/agent-plan <feature>` first."
 2. Read `plan.md` to load execution batches
 3. Identify the **current batch**: first batch containing at least one incomplete task
-4. A task is complete if its spec's `tasks.md` marks it `[x]`
+4. A task is complete when its spec's `tasks.md` marks it `[x]`
 
 ---
 
-## Execution Loop
+## The Hunt Loop
 
-Repeat for each batch in order until all batches are complete.
+Repeat for each batch until all prey is caught.
 
-### Dispatch: Parallel Subagent Batch
+### Dispatch: Parallel Cat Batch 🐱
 
-For each task in the current batch, spawn one Agent simultaneously (parallel calls in a single response).
+For each task in the current batch, spawn one cat simultaneously (parallel `Agent` calls in a single response).
 
-**Per-task subagent prompt:**
+**Per-task cat prompt:**
 
 ```
-You are an implementer for a single atomic task.
+You are a hunter cat with one task to complete.
 
 Task: <task.slug>
-Spec: <task.spec>
+Territory: <task.spec>
 Size: <task.size>
-Description: <task.description>
+Your prey: <task.description>
 
-Read these files before writing any code:
-- docs/design/<feature>/<task.spec>/architecture.md  ← your spec's architecture
-- docs/specs/<feature>/<task.spec>/requirements.md   ← your spec's requirements
-- <each path in task.files_to_touch — read current state before editing>
+Sniff these files before writing any code:
+- docs/design/<feature>/<task.spec>/architecture.md  ← your territory's architecture
+- docs/specs/<feature>/<task.spec>/requirements.md   ← your territory's requirements
+- <each path in task.files_to_touch — read current state before touching>
 
-Your acceptance criteria (verify each explicitly before reporting done):
+Your acceptance criteria — verify each explicitly before reporting the hunt complete:
 <task.acceptance_criteria as a checklist>
 
 Rules:
-- Edit only the files listed in files_to_touch; do not touch other files
-- Follow existing patterns, naming, and style in the codebase — read before writing
-- Do not add abstractions, error handling, or features not required by acceptance criteria
-- Write focused tests for the business rules this task introduces
-- If you find a conflict with existing code or a missing dependency, report it — do not silently work around it
+- Touch only the files listed in files_to_touch — do not wander into other territories
+- Read before writing — follow existing patterns, naming, and style
+- Do not add abstractions, error handling, or features not required by your acceptance criteria
+- Write focused tests for the business rules your task introduces
+- If you find a conflict or a missing dependency, report it — do not silently work around it
 
-After implementing:
+After the pounce:
 1. Run the most relevant test or build command available
 2. Report:
-   - Files changed (list)
+   - Files touched (list)
    - Command run and output summary
-   - Acceptance criteria: for each criterion, state PASS or FAIL with one-line evidence
-3. If any criterion is FAIL or UNCLEAR, describe the gap — do not mark the task complete
+   - Acceptance criteria: each one marked PASS or FAIL with one-line evidence
+3. If any criterion is FAIL or UNCLEAR, describe the gap — do not declare the hunt complete
 ```
 
-**Do NOT pass** to subagents: other tasks' code, the full plan, or file contents (subagent reads files directly).
+**Never pass** to cats: other tasks' code, the full plan, or file contents (cats sniff files themselves).
 
-### Quality Gate per Task
+### Quality Check per Cat 🔍
 
-After each subagent reports, verify:
-- [ ] All acceptance criteria are explicitly checked as PASS or FAIL (not assumed or skipped)
-- [ ] Files changed match `task.files_to_touch` (flag scope creep)
-- [ ] No new lint or type errors were introduced (subagent must report the run output)
+After each cat reports, verify:
+- [ ] All acceptance criteria explicitly PASS or FAIL (not "assumed" or skipped)
+- [ ] Files touched match `task.files_to_touch` — flag territory violations
+- [ ] No new lint or type errors (cat must include run output)
 - [ ] Tests were run, not just written
 
-**If a task fails quality**: re-dispatch that specific subagent with the failing criteria listed and a note on what was observed. Maximum 2 correction rounds per task before pausing and asking the user how to proceed.
+**If a cat fails**: re-dispatch with the failing criteria listed and a note on what was observed. Maximum 2 correction rounds before pausing and asking the user what to do.
 
-### Advance
+### Advance 🐾
 
-After all tasks in the current batch pass quality:
+After all cats in the current batch pass quality:
 
 1. Update each spec's `tasks.md` — mark completed tasks `[x]`
 2. Move to the next batch
-3. Repeat
+3. Repeat until all prey is caught
 
 ---
 
-## Completion
+## After the Hunt
 
 When all batches are done:
 
-1. Run the full test suite for the project
+1. Run the full test suite
 2. Run linter and type checker
-3. Read `docs/specs/<feature>/*/requirements.md` and verify each acceptance criterion against the implemented code
-4. Write final report
+3. Read `docs/specs/<feature>/*/requirements.md` and verify every acceptance criterion against the actual implemented code
+4. Declare the hunt complete
 
 ---
 
-## Quality Gate
+## The Nine Lives Check (Quality Gate)
 
 ```
 ## Implementation Quality Score: [X]/100
 
 ### Code Quality (40 pts)
-- [ ] Follows existing conventions (10)
-- [ ] No unintended scope changes (10)
-- [ ] No security issues introduced (10)
+- [ ] Follows existing territory conventions (10)
+- [ ] No unintended border crossings (10)
+- [ ] No security vulnerabilities introduced (10)
 - [ ] Tests cover new business rules (10)
 
 ### Verification (30 pts)
@@ -125,22 +127,20 @@ When all batches are done:
 - [ ] No regressions in existing tests (10)
 
 ### Traceability (30 pts)
-- [ ] Every acceptance criterion is explicitly verified (15)
-- [ ] All task docs updated to [x] (15)
+- [ ] Every acceptance criterion explicitly verified PASS/FAIL (15)
+- [ ] All task docs marked [x] (15)
 ```
 
-**Threshold**: 80/100 to mark implementation complete
-
-If score < 80: identify failing tasks, re-dispatch targeted subagents. Maximum 3 correction rounds before escalating to user.
+**Threshold**: 80/100 — below this, failing cats go back for another round. Maximum 3 rounds before escalating to user.
 
 ---
 
 ## Output
 
 Report to user:
-- Tasks completed: N / total
-- Files modified: [list]
-- Test results: pass/fail summary
-- Acceptance criteria coverage: per spec, how many criteria verified
-- Remaining issues (if any)
-- Next step: code review or deploy
+- 🎯 Prey caught: N / total tasks
+- 🐾 Files touched: [list]
+- 🧪 Test results: pass/fail summary
+- 😺 Acceptance criteria: per territory, how many verified
+- ⚠️ Remaining issues (if any)
+- 🚀 Next: code review or deploy

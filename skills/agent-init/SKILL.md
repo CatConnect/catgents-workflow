@@ -1,7 +1,7 @@
 ---
 name: "agent-init"
-description: "Initialize agent workflow infrastructure in any project"
-compatibility: "Works with any project type (React, Next.js, Python, etc)"
+description: "Set up the litter box — initialize agent workflow infrastructure in any project"
+compatibility: "Works with any project type (React, Next.js, Python, Go, Rust, Java, etc)"
 metadata:
   author: "catconnect"
   version: "1.0.0"
@@ -9,7 +9,7 @@ metadata:
 
 ## Purpose
 
-Set up the agent workflow infrastructure in your project. This creates the necessary directories, configuration files, and hooks to enable AI-driven development workflows.
+Every cat needs a territory before it can hunt. This skill sets up the workflow infrastructure — directories, configuration, and hooks — so the other cats (`/agent-plan`, `/agent-implement`) have a clean litter box to operate in.
 
 ## User Input
 
@@ -19,26 +19,19 @@ $ARGUMENTS
 
 You **MUST** consider the user input before proceeding (if not empty).
 
-## What This Does
-
-1. **Creates directory structure**
-2. **Sets up agent configuration**
-3. **Initializes workflow hooks**
-4. **Validates installation**
-
 ## Execution Flow
 
-### Step 1: Analyze Project
+### Step 1: Sniff the Project
 
-Determine the project type by checking for:
-- `package.json` → Node.js/JavaScript/TypeScript
+Determine project type by checking for:
+- `package.json` → Node.js / JavaScript / TypeScript
 - `requirements.txt` or `pyproject.toml` → Python
 - `go.mod` → Go
 - `Cargo.toml` → Rust
 - `pom.xml` or `build.gradle` → Java
 - Default → Generic project
 
-### Step 2: Create Directories
+### Step 2: Scratch the Directories
 
 ```bash
 mkdir -p .agents/skills
@@ -49,7 +42,7 @@ mkdir -p docs/design
 mkdir -p docs/tasks
 ```
 
-### Step 3: Create Configuration
+### Step 3: Write the Territory Config
 
 Create `.agents/config.json`:
 
@@ -57,34 +50,34 @@ Create `.agents/config.json`:
 {
   "version": "1.0.0",
   "project_type": "<detected-type>",
-  "agents": {
-    "analyst": {
+  "cats": {
+    "scout": {
       "enabled": true,
-      "description": "Requirements analysis"
+      "description": "Requirements scout — maps the hunting ground"
     },
-    "architect": {
+    "lair-builder": {
       "enabled": true,
-      "description": "System design"
+      "description": "Architecture designer — builds the lair"
     },
-    "planner": {
+    "paw-planner": {
       "enabled": true,
-      "description": "Task breakdown"
+      "description": "Task planner — plans the pounce sequence"
     },
-    "developer": {
+    "claws-dev": {
       "enabled": true,
-      "description": "Implementation"
+      "description": "Developer — does the actual scratching"
     },
-    "tester": {
+    "cat-tester": {
       "enabled": true,
-      "description": "Testing"
+      "description": "Tester — checks if the prey is actually caught"
     },
-    "reviewer": {
+    "whisker-reviewer": {
       "enabled": true,
-      "description": "Code review"
+      "description": "Code reviewer — sniffs for problems"
     },
-    "validator": {
+    "purr-validator": {
       "enabled": true,
-      "description": "Final validation"
+      "description": "Final validator — only purrs when everything passes"
     }
   },
   "quality_gates": {
@@ -95,7 +88,7 @@ Create `.agents/config.json`:
 }
 ```
 
-### Step 4: Create Workflow Hook
+### Step 4: Set the Workflow Hooks
 
 Create `.agents/hooks/workflow.json`:
 
@@ -116,27 +109,28 @@ Create `.agents/hooks/workflow.json`:
 }
 ```
 
-### Step 5: Validate Installation
+### Step 5: Verify the Litter Box
 
 Check that all directories and files were created successfully.
 
 ## Output
 
 Report to user:
-- ✅ Directories created
-- ✅ Configuration initialized
-- ✅ Hooks configured
+- 🐾 Directories scratched into place
+- 🐱 Territory config initialized
+- 🔔 Hooks set
 - 📁 Location: `.agents/`
 
 ## Next Steps
 
-After initialization, use:
-- `/agent-plan <feature-description>` - Plan a new feature
-- `/agent-implement` - Implement planned features
+```
+/agent-plan <feature-description>   — stalk a new feature
+/agent-implement                    — pounce on the planned feature
+```
 
 ## Troubleshooting
 
 If directories already exist:
-- Ask user: "Agent workflow already initialized. Overwrite configuration?"
-- If yes, backup existing config and recreate
-- If no, skip initialization
+- Ask user: "Litter box already set up. Overwrite config?"
+- If yes: backup existing config and recreate
+- If no: skip initialization, leave territory intact
