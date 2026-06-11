@@ -1,15 +1,27 @@
 ---
 name: "agent-plan"
-description: "Plan a feature using AI agents (requirements, architecture, tasks)"
+description: "Plan a feature by decomposing it into bounded specs, then dispatching each spec to a dedicated subagent — requirements, architecture, and task breakdown run in parallel with isolated context per spec"
 compatibility: "Requires agent-init to be run first"
 metadata:
   author: "catconnect"
-  version: "1.0.0"
+  version: "2.0.0"
 ---
 
-## Purpose
+## Design Principles
 
-Plan a feature through a structured workflow: requirements analysis → architecture design → task breakdown.
+**Parallel Bounded-Context Planning**: instead of a single agent analyzing the whole feature, this skill:
+
+1. Decomposes the feature into N independent **specs** (bounded contexts)
+2. Dispatches each spec to a subagent via the `Agent` tool with **minimal, isolated context**
+3. Runs independent specs **in parallel**; specs with dependencies sequence after their parents
+4. **Synthesizes** all outputs into a unified, cross-spec plan
+
+**Why this works:**
+
+- *Lost in the Middle* (Liu et al., 2023): LLM performance degrades for information in the middle of long contexts — isolated subagent context keeps relevant information at the top of the window, not buried
+- *AutoGen* (Wu et al., 2023): specialized agents with focused roles outperform a single generalist agent on complex multi-step tasks
+- DDD *Bounded Context*: each spec maps to a single domain concern with explicit interfaces — prevents semantic drift and error cascade across subagents
+- *Minimal Context Principle*: each subagent receives only what it needs to do its job; it reads files itself rather than receiving content dumps
 
 ## User Input
 
@@ -21,120 +33,266 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Pre-Execution Checks
 
-1. Verify `.agents/config.json` exists (run `/agent-init` if not)
-2. Parse feature description from arguments
+1. Verify `.agents/config.json` exists — run `/agent-init` if missing
+2. Parse feature description from `$ARGUMENTS`
 3. If empty: ERROR "No feature description provided"
 
-## Workflow Phases
+---
 
-### Phase 1: Requirements Analysis (spec-analyst)
+## Phase 0: Spec Decomposition
 
-**Goal**: Transform idea into clear, testable requirements
+**Goal**: Identify the minimal set of bounded specs that cover the feature.
 
-**Actions**:
-1. Extract key concepts from description
-2. Identify actors, actions, data, constraints
-3. Create user stories
-4. Define functional requirements
-5. Set success criteria
+**Decomposition rules:**
+- Each spec addresses a single domain concern (data model, API endpoint, UI component, auth rule, background job, infra)
+- A spec's public contract (inputs/outputs) is the only coupling point with other specs — no shared internals
+- Each spec can be implemented and verified independently
+- Maximum 6 specs per feature; if more are needed, ask the user to split the feature
+- If the feature naturally fits a single focused scope, use 1 spec
 
-**Output**: `docs/specs/<feature-name>/requirements.md`
+**Write decomposition to `.agents/<feature-slug>/decomposition.json`:**
 
-**Quality Check**:
-- [ ] All requirements are testable
-- [ ] No implementation details (WHAT, not HOW)
-- [ ] Success criteria are measurable
-- [ ] Scope is clearly bounded
+```json
+{
+  "feature": "<feature-slug>",
+  "description": "<one-sentence summary>",
+  "specs": [
+    {
+      "id": "spec-<slug>",
+      "domain": "<data|api|ui|auth|job|infra>",
+      "concern": "<one sentence: exactly what this spec covers>",
+      "depends_on": ["<spec-id>"],
+      "contract": {
+        "inputs": ["<what this spec consumes from other specs — contracts only, not internals>"],
+        "outputs": ["<what this spec exposes for other specs to consume>"]
+      },
+      "context_files": ["<paths to most relevant existing files — max 5>"]
+    }
+  ]
+}
+```
 
-### Phase 2: Architecture Design (spec-architect)
+After writing the decomposition, present the spec list to the user in a compact table and proceed without waiting for confirmation unless there is genuine ambiguity.
 
-**Goal**: Design system architecture based on requirements
+---
 
-**Actions**:
-1. Read requirements from Phase 1
-2. Design system components
-3. Define data models
-4. Create API contracts (if applicable)
-5. Identify integration points
+## Phase 1: Requirements — Parallel Subagent Dispatch
 
-**Output**: `docs/design/<feature-name>/architecture.md`
+**Batching rule**: group specs into execution batches where no spec in a batch depends on another spec in the same batch. Within each batch, dispatch all specs **simultaneously** using parallel `Agent` tool calls (multiple Agent calls in a single response).
 
-**Quality Check**:
-- [ ] Covers all functional requirements
-- [ ] Data models are complete
-- [ ] Integration points identified
-- [ ] Scalability considerations documented
+**For each spec, spawn one Agent with exactly this prompt structure (substitute values):**
 
-### Phase 3: Task Breakdown (spec-planner)
+```
+You are a requirements analyst for a single bounded spec.
 
-**Goal**: Break architecture into implementable tasks
+Feature context: <feature description from $ARGUMENTS>
+Your spec ID: <spec.id>
+Your spec concern: <spec.concern>
+Your spec domain: <spec.domain>
+Inputs this spec consumes from other specs: <spec.contract.inputs>
+Outputs this spec must expose: <spec.contract.outputs>
 
-**Actions**:
-1. Read architecture from Phase 2
-2. Identify implementation modules
-3. Create task list with dependencies
-4. Estimate complexity
-5. Define acceptance criteria per task
+Read these existing files to understand current code before writing:
+<spec.context_files, one per line — if a file does not exist, skip it>
 
-**Output**: `docs/tasks/<feature-name>/tasks.md`
+Your task — stay strictly within your spec's concern:
+1. Extract functional requirements (WHAT, not HOW)
+2. Write user stories in format: As a <role>, I want <action> so that <value>
+3. Define acceptance criteria — each must be binary (pass/fail), specific, observable
+4. List constraints: technical, security, performance, regulatory
+5. Flag open questions or risky assumptions as explicit items, not hidden decisions
 
-**Quality Check**:
-- [ ] Tasks are atomic (1-2 days each)
-- [ ] Dependencies are clear
-- [ ] Each task has acceptance criteria
-- [ ] Tasks are ordered by dependency
+Write output to: docs/specs/<feature>/<spec.id>/requirements.md
+
+Output format:
+# Requirements: <spec.concern>
+## User Stories
+## Functional Requirements
+## Acceptance Criteria
+## Constraints
+## Open Questions
+```
+
+**Do NOT include** in subagent prompts: other specs' requirements, file contents (subagent reads directly), or instructions to modify files outside `docs/specs/<feature>/<spec.id>/`.
+
+**After all subagents in a batch complete**, read each output and verify:
+- [ ] Requirements are testable — binary assertions, not vague goals like "should be fast"
+- [ ] No HOW — no implementation decisions embedded in requirements
+- [ ] Acceptance criteria are specific and measurable
+- [ ] Scope is bounded to this spec's concern only
+- [ ] Open questions are explicit items, not silent assumptions
+
+If a spec fails quality: re-dispatch that spec's subagent with a correction note before advancing. Maximum 2 correction rounds per spec before escalating to user.
+
+---
+
+## Phase 2: Architecture — Parallel Subagent Dispatch
+
+Same batching and parallelism rules as Phase 1. Run after Phase 1 is fully complete.
+
+**For each spec, spawn one Agent:**
+
+```
+You are a system architect for a single bounded spec.
+
+Read these files before designing — all reads first, then design:
+- docs/specs/<feature>/<spec.id>/requirements.md  ← your spec's requirements
+- <any relevant existing architecture docs in docs/design/>
+- <spec.context_files>
+
+Your spec: <spec.concern>
+Other specs' public contracts (interfaces only — do not redesign their internals):
+<for each spec.id in this spec's depends_on:>
+  - <spec.id>: outputs = <spec.contract.outputs>
+
+Your task — design components for THIS spec only:
+1. List components with their responsibilities
+2. Define data models: fields, types, constraints, relations, required migrations
+3. Define this spec's public API contract: routes, events, or exports it exposes
+4. Map integration points: how this spec consumes other specs' contracts
+5. Document key technical decisions with rationale (why, not just what)
+6. Security and performance considerations specific to this spec
+
+Write output to: docs/design/<feature>/<spec.id>/architecture.md
+
+Output format:
+# Architecture: <spec.concern>
+## Components
+## Data Model
+## Public API Contract
+## Integration Points
+## Technical Decisions
+## Security & Performance
+```
+
+**Quality check per subagent output:**
+- [ ] All acceptance criteria from Phase 1 are covered by at least one component
+- [ ] Data model has no TBD fields — every field has a type and constraint
+- [ ] Integration points reference only other specs' `contract.outputs`, not their internals
+- [ ] Every technical decision includes a rationale
+
+---
+
+## Phase 3: Task Breakdown — Parallel Subagent Dispatch
+
+Same batching rules. Run after Phase 2 is fully complete.
+
+**For each spec, spawn one Agent:**
+
+```
+You are a technical planner for a single bounded spec.
+
+Read these files first:
+- docs/design/<feature>/<spec.id>/architecture.md  ← your spec's architecture
+- docs/specs/<feature>/<spec.id>/requirements.md   ← your spec's requirements
+
+Your task: break this spec's architecture into atomic implementation tasks.
+
+Rules:
+- Each task must be 1–4 hours of focused coding work (S = < 1h, M = 1–4h; split any L)
+- Order tasks by internal dependency (a task that uses an interface must come after the task that creates it)
+- Each task has at least 2 binary acceptance criteria
+- Tasks are scoped to files listed in files_to_touch — do not leave it empty
+- Each task references its spec ID for cross-spec traceability
+
+Write output to: docs/tasks/<feature>/<spec.id>/tasks.md
+
+Repeat this block for each task:
+## task-<n>: <slug>
+- spec: <spec.id>
+- size: S | M  (never L — split L tasks)
+- depends_on: [<task-slugs within this spec>]
+- description: <what to implement — concrete, not vague>
+- files_to_touch: [<file paths>]
+- acceptance_criteria:
+  - [ ] <binary check>
+  - [ ] <binary check>
+```
+
+**Quality check:**
+- [ ] No L-sized tasks (every L must be split before this phase passes)
+- [ ] Every task has at least 2 acceptance criteria
+- [ ] Dependencies form a DAG — verify there are no cycles
+- [ ] All architecture components from Phase 2 are covered by at least one task
+
+---
+
+## Phase 4: Cross-Spec Synthesis
+
+After all Phase 3 subagents complete:
+
+1. Read all `docs/tasks/<feature>/*/tasks.md`
+2. Build a cross-spec dependency graph: a task in spec-B that consumes spec-A's API contract must sequence after the task in spec-A that creates that contract
+3. Topologically sort all tasks into execution batches
+4. Write unified plan to `docs/tasks/<feature>/plan.md`:
+
+```markdown
+# Execution Plan: <feature>
+
+## Specs
+| ID | Domain | Concern |
+|----|--------|---------|
+
+## Execution Batches
+Each batch lists tasks that can run in parallel. A batch starts only when all tasks in the previous batch are complete.
+
+### Batch 1
+- spec-X / task-1
+- spec-Y / task-1
+
+### Batch 2
+...
+
+## Cross-Spec Sequencing
+| Task | Must complete before |
+|------|----------------------|
+
+## Risk Summary
+Top risks from open questions across all specs:
+1. ...
+
+## Estimate
+| Size | Count |
+|------|-------|
+| S    | N     |
+| M    | N     |
+| Total tasks | N |
+```
+
+---
 
 ## Quality Gate
 
-After all phases, run quality validation:
-
-```markdown
+```
 ## Planning Quality Score: [X]/100
 
-### Completeness (40 points)
-- [ ] Requirements documented (10)
-- [ ] Architecture designed (15)
-- [ ] Tasks broken down (15)
+### Completeness (40 pts)
+- [ ] All specs have requirements docs (10)
+- [ ] All specs have architecture docs (15)
+- [ ] All specs have task breakdowns, no L tasks (15)
 
-### Quality (40 points)
-- [ ] Requirements testable (10)
-- [ ] Architecture feasible (10)
-- [ ] Tasks atomic (10)
-- [ ] Dependencies clear (10)
+### Quality (40 pts)
+- [ ] Requirements are testable — no vague goals (10)
+- [ ] Architecture is complete — no TBD data models (10)
+- [ ] Tasks are atomic — M or S only (10)
+- [ ] Cross-spec dependencies are resolved in plan.md (10)
 
-### Documentation (20 points)
-- [ ] All artifacts created (10)
-- [ ] Cross-references valid (10)
+### Documentation (20 pts)
+- [ ] Unified plan.md produced with execution batches (10)
+- [ ] All artifact cross-references are valid paths (10)
 ```
 
-**Threshold**: 85/100 to proceed to implementation
+**Threshold**: 85/100 to report ready for `/agent-implement`
 
-If score < 85:
-1. Identify failing criteria
-2. Return to specific phase for revision
-3. Re-run quality check
+If score < 85: identify failing specs, re-dispatch targeted correction subagents. Maximum 3 correction rounds before escalating to the user with a specific list of unresolved issues.
 
-## Loop Behavior
-
-If quality gate fails:
-- **Requirements issues** → Return to Phase 1
-- **Architecture issues** → Return to Phase 2
-- **Task issues** → Return to Phase 3
-
-Maximum 3 iterations per phase before warning user.
+---
 
 ## Output
 
 Report to user:
-- 📋 Requirements: `docs/specs/<feature-name>/requirements.md`
-- 🏗️ Architecture: `docs/design/<feature-name>/architecture.md`
-- 📝 Tasks: `docs/tasks/<feature-name>/tasks.md`
-- ✅ Quality Score: [X]/100
-- 🚀 Ready for implementation: `/agent-implement`
-
-## Customization
-
-User can modify:
-- Quality thresholds in `.agents/config.json`
-- Output directories
-- Documentation format
+- Specs decomposed: N
+- Per-spec artifacts: `docs/specs/<feature>/`, `docs/design/<feature>/`, `docs/tasks/<feature>/`
+- Unified plan: `docs/tasks/<feature>/plan.md`
+- Quality Score: [X]/100
+- Next step: `/agent-implement <feature>`

@@ -1,15 +1,20 @@
 ---
 name: "agent-implement"
-description: "Implement planned features with code, tests, and validation"
+description: "Implement planned features by reading plan.md and dispatching each independent task batch to parallel subagents — each subagent receives only its task's acceptance criteria, architecture, and relevant files"
 compatibility: "Requires agent-plan to be run first"
 metadata:
   author: "catconnect"
-  version: "1.0.0"
+  version: "2.0.0"
 ---
 
-## Purpose
+## Design Principles
 
-Implement features based on the plan created by `/agent-plan`. This skill handles coding, testing, review, and validation.
+Same bounded-context philosophy as `agent-plan`: each task gets a subagent with exactly the context it needs. The orchestrator manages sequencing via `plan.md`, dispatches parallel batches, collects outputs, and runs quality gates.
+
+**Why subagents per task:**
+- A task subagent's context window contains only its task description, acceptance criteria, and relevant files — not the full plan and not other tasks' code
+- This keeps the subagent's attention on its specific acceptance criteria, reducing hallucination on irrelevant API surface
+- Parallel dispatch of independent tasks reduces total wall-clock time proportionally to concurrency
 
 ## User Input
 
@@ -17,155 +22,125 @@ Implement features based on the plan created by `/agent-plan`. This skill handle
 $ARGUMENTS
 ```
 
-You **MUST** consider the user input before proceeding (if not empty).
+Feature name is taken from `$ARGUMENTS`. If empty, detect from the most recently modified `docs/tasks/*/plan.md`.
 
 ## Pre-Execution Checks
 
-1. Verify plan exists in `docs/tasks/`
-2. If no plan found: ERROR "Run `/agent-plan <feature>` first"
-3. Load task list from `docs/tasks/<feature-name>/tasks.md`
-4. Identify current task (first incomplete)
+1. Locate `docs/tasks/<feature>/plan.md` — if not found: ERROR "Run `/agent-plan <feature>` first"
+2. Read `plan.md` to load execution batches
+3. Identify the **current batch**: first batch containing at least one incomplete task
+4. A task is complete if its spec's `tasks.md` marks it `[x]`
 
-## Workflow Phases
+---
 
-### Phase 1: Implementation (spec-developer)
+## Execution Loop
 
-**Goal**: Write code for current task
+Repeat for each batch in order until all batches are complete.
 
-**Actions**:
-1. Read task description and acceptance criteria
-2. Read architecture from `docs/design/`
-3. Implement code following project conventions
-4. Create necessary files/directories
-5. Follow existing code style
+### Dispatch: Parallel Subagent Batch
 
-**Output**: Source code files
+For each task in the current batch, spawn one Agent simultaneously (parallel calls in a single response).
 
-**Quality Check**:
-- [ ] Code follows project conventions
-- [ ] No commented-out code
-- [ ] No TODO/FIXME without issue reference
-- [ ] Error handling implemented
-- [ ] TypeScript types defined (if applicable)
+**Per-task subagent prompt:**
 
-### Phase 2: Testing (spec-tester)
+```
+You are an implementer for a single atomic task.
 
-**Goal**: Write tests for implemented code
+Task: <task.slug>
+Spec: <task.spec>
+Size: <task.size>
+Description: <task.description>
 
-**Actions**:
-1. Identify test framework (check `package.json` or project config)
-2. Create test files mirroring source structure
-3. Write unit tests for new functions/components
-4. Write integration tests if applicable
-5. Ensure tests are runnable
+Read these files before writing any code:
+- docs/design/<feature>/<task.spec>/architecture.md  ← your spec's architecture
+- docs/specs/<feature>/<task.spec>/requirements.md   ← your spec's requirements
+- <each path in task.files_to_touch — read current state before editing>
 
-**Output**: Test files
+Your acceptance criteria (verify each explicitly before reporting done):
+<task.acceptance_criteria as a checklist>
 
-**Quality Check**:
-- [ ] Tests cover main functionality
-- [ ] Edge cases tested
-- [ ] Tests are independent
-- [ ] Tests can run successfully
+Rules:
+- Edit only the files listed in files_to_touch; do not touch other files
+- Follow existing patterns, naming, and style in the codebase — read before writing
+- Do not add abstractions, error handling, or features not required by acceptance criteria
+- Write focused tests for the business rules this task introduces
+- If you find a conflict with existing code or a missing dependency, report it — do not silently work around it
 
-### Phase 3: Code Review (spec-reviewer)
+After implementing:
+1. Run the most relevant test or build command available
+2. Report:
+   - Files changed (list)
+   - Command run and output summary
+   - Acceptance criteria: for each criterion, state PASS or FAIL with one-line evidence
+3. If any criterion is FAIL or UNCLEAR, describe the gap — do not mark the task complete
+```
 
-**Goal**: Review code for quality and best practices
+**Do NOT pass** to subagents: other tasks' code, the full plan, or file contents (subagent reads files directly).
 
-**Actions**:
-1. Check code style consistency
-2. Review error handling
-3. Verify security practices
-4. Check performance considerations
-5. Validate documentation
+### Quality Gate per Task
 
-**Output**: Review report (inline comments)
+After each subagent reports, verify:
+- [ ] All acceptance criteria are explicitly checked as PASS or FAIL (not assumed or skipped)
+- [ ] Files changed match `task.files_to_touch` (flag scope creep)
+- [ ] No new lint or type errors were introduced (subagent must report the run output)
+- [ ] Tests were run, not just written
 
-**Quality Check**:
-- [ ] No security vulnerabilities
-- [ ] No performance issues
-- [ ] Code is maintainable
-- [ ] Follows DRY principles
+**If a task fails quality**: re-dispatch that specific subagent with the failing criteria listed and a note on what was observed. Maximum 2 correction rounds per task before pausing and asking the user how to proceed.
 
-### Phase 4: Validation (spec-validator)
+### Advance
 
-**Goal**: Final validation before marking task complete
+After all tasks in the current batch pass quality:
 
-**Actions**:
-1. Run all tests
-2. Run linter/formatter
-3. Check TypeScript compilation (if applicable)
-4. Verify no regressions
-5. Update task status
+1. Update each spec's `tasks.md` — mark completed tasks `[x]`
+2. Move to the next batch
+3. Repeat
 
-**Output**: Validation report
+---
 
-**Quality Check**:
-- [ ] All tests pass
-- [ ] No lint errors
-- [ ] No type errors
-- [ ] Task acceptance criteria met
+## Completion
+
+When all batches are done:
+
+1. Run the full test suite for the project
+2. Run linter and type checker
+3. Read `docs/specs/<feature>/*/requirements.md` and verify each acceptance criterion against the implemented code
+4. Write final report
+
+---
 
 ## Quality Gate
 
-After all phases, run quality validation:
-
-```markdown
+```
 ## Implementation Quality Score: [X]/100
 
-### Code Quality (40 points)
-- [ ] Follows conventions (10)
-- [ ] Error handling (10)
-- [ ] No security issues (10)
-- [ ] Performance considered (10)
+### Code Quality (40 pts)
+- [ ] Follows existing conventions (10)
+- [ ] No unintended scope changes (10)
+- [ ] No security issues introduced (10)
+- [ ] Tests cover new business rules (10)
 
-### Testing (30 points)
-- [ ] Tests written (10)
+### Verification (30 pts)
 - [ ] Tests pass (10)
-- [ ] Edge cases covered (10)
+- [ ] Linter/type check passes (10)
+- [ ] No regressions in existing tests (10)
 
-### Validation (30 points)
-- [ ] Linter passes (10)
-- [ ] Type check passes (10)
-- [ ] No regressions (10)
+### Traceability (30 pts)
+- [ ] Every acceptance criterion is explicitly verified (15)
+- [ ] All task docs updated to [x] (15)
 ```
 
-**Threshold**: 80/100 to proceed to next task
+**Threshold**: 80/100 to mark implementation complete
 
-If score < 80:
-1. Identify failing criteria
-2. Return to specific phase for revision
-3. Re-run quality check
+If score < 80: identify failing tasks, re-dispatch targeted subagents. Maximum 3 correction rounds before escalating to user.
 
-## Loop Behavior
-
-If quality gate fails:
-- **Code issues** → Return to Phase 1
-- **Test issues** → Return to Phase 2
-- **Review issues** → Return to Phase 3
-- **Validation issues** → Return to Phase 4
-
-Maximum 3 iterations per task before warning user.
-
-## Task Progression
-
-After successful implementation:
-1. Mark task as complete in `tasks.md`
-2. Move to next task
-3. Repeat workflow
+---
 
 ## Output
 
 Report to user:
-- ✅ Task completed: [task-name]
-- 📁 Files created/modified: [list]
-- 🧪 Tests: [pass/fail]
-- 📊 Quality Score: [X]/100
-- 📋 Next task: [task-name] (or "All tasks complete!")
-
-## Customization
-
-User can modify:
-- Quality thresholds in `.agents/config.json`
-- Test framework preference
-- Code style rules
-- Linting configuration
+- Tasks completed: N / total
+- Files modified: [list]
+- Test results: pass/fail summary
+- Acceptance criteria coverage: per spec, how many criteria verified
+- Remaining issues (if any)
+- Next step: code review or deploy
