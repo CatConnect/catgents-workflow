@@ -6,7 +6,7 @@ set -e
 
 PROJECT_PATH="${1:-.}"
 
-echo "🚀 CatConnect Agent Workflow Installer"
+echo "🐱 CatAgents Workflow Installer"
 echo ""
 
 # Check if project path exists
@@ -39,16 +39,16 @@ cp -r "$SCRIPT_DIR/skills/agent-implement" "$PROJECT_PATH/.agents/skills/"
 echo "⚙️ Creating configuration..."
 cat > "$PROJECT_PATH/.agents/config.json" << 'EOF'
 {
-  "version": "1.0.0",
+  "version": "2.0.0",
   "project_type": "generic",
-  "agents": {
-    "analyst": { "enabled": true, "description": "Requirements analysis" },
-    "architect": { "enabled": true, "description": "System design" },
-    "planner": { "enabled": true, "description": "Task breakdown" },
-    "developer": { "enabled": true, "description": "Implementation" },
-    "tester": { "enabled": true, "description": "Testing" },
-    "reviewer": { "enabled": true, "description": "Code review" },
-    "validator": { "enabled": true, "description": "Final validation" }
+  "cats": {
+    "scout": { "enabled": true, "description": "Requirements scout — maps the hunting ground" },
+    "lair-builder": { "enabled": true, "description": "Architecture designer — builds the lair" },
+    "paw-planner": { "enabled": true, "description": "Task planner — plans the pounce sequence" },
+    "claws-dev": { "enabled": true, "description": "Developer — does the actual scratching" },
+    "cat-tester": { "enabled": true, "description": "Tester — checks if the prey is actually caught" },
+    "whisker-reviewer": { "enabled": true, "description": "Code reviewer — sniffs for problems" },
+    "purr-validator": { "enabled": true, "description": "Final validator — only purrs when everything passes" }
   },
   "quality_gates": {
     "planning": 85,
@@ -59,10 +59,10 @@ cat > "$PROJECT_PATH/.agents/config.json" << 'EOF'
 EOF
 
 echo ""
-echo "✅ Installation complete!"
+echo "✅ Litter box ready!"
 echo ""
 echo "Next steps:"
-echo "  1. Run /agent-init to initialize workflow"
-echo "  2. Run /agent-plan <feature> to plan a feature"
-echo "  3. Run /agent-implement to implement"
+echo "  1. Run /agent-init   — set up the territory"
+echo "  2. Run /agent-plan <feature>   — stalk the feature"
+echo "  3. Run /agent-implement <feature>   — pounce"
 echo ""

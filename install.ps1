@@ -5,7 +5,7 @@ param(
     [string]$ProjectPath = "."
 )
 
-Write-Host "🚀 CatConnect Agent Workflow Installer" -ForegroundColor Cyan
+Write-Host "🐱 CatAgents Workflow Installer" -ForegroundColor Cyan
 Write-Host ""
 
 # Check if project path exists
@@ -39,16 +39,16 @@ Copy-Item -Recurse -Force "$ScriptDir\skills\agent-implement" "$ProjectPath\.age
 # Create config
 Write-Host "⚙️ Creating configuration..." -ForegroundColor Green
 $config = @{
-    version = "1.0.0"
+    version = "2.0.0"
     project_type = "generic"
-    agents = @{
-        analyst = @{ enabled = $true; description = "Requirements analysis" }
-        architect = @{ enabled = $true; description = "System design" }
-        planner = @{ enabled = $true; description = "Task breakdown" }
-        developer = @{ enabled = $true; description = "Implementation" }
-        tester = @{ enabled = $true; description = "Testing" }
-        reviewer = @{ enabled = $true; description = "Code review" }
-        validator = @{ enabled = $true; description = "Final validation" }
+    cats = @{
+        "scout" = @{ enabled = $true; description = "Requirements scout — maps the hunting ground" }
+        "lair-builder" = @{ enabled = $true; description = "Architecture designer — builds the lair" }
+        "paw-planner" = @{ enabled = $true; description = "Task planner — plans the pounce sequence" }
+        "claws-dev" = @{ enabled = $true; description = "Developer — does the actual scratching" }
+        "cat-tester" = @{ enabled = $true; description = "Tester — checks if the prey is actually caught" }
+        "whisker-reviewer" = @{ enabled = $true; description = "Code reviewer — sniffs for problems" }
+        "purr-validator" = @{ enabled = $true; description = "Final validator — only purrs when everything passes" }
     }
     quality_gates = @{
         planning = 85
@@ -60,10 +60,10 @@ $config = @{
 $config | Out-File -FilePath "$ProjectPath\.agents\config.json" -Encoding UTF8
 
 Write-Host ""
-Write-Host "✅ Installation complete!" -ForegroundColor Green
+Write-Host "✅ Litter box ready!" -ForegroundColor Green
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Cyan
-Write-Host "  1. Run /agent-init to initialize workflow" -ForegroundColor White
-Write-Host "  2. Run /agent-plan <feature> to plan a feature" -ForegroundColor White
-Write-Host "  3. Run /agent-implement to implement" -ForegroundColor White
+Write-Host "  1. Run /agent-init              — set up the territory" -ForegroundColor White
+Write-Host "  2. Run /agent-plan <feature>    — stalk the feature" -ForegroundColor White
+Write-Host "  3. Run /agent-implement <feature> — pounce" -ForegroundColor White
 Write-Host ""
