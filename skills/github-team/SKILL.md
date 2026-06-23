@@ -71,6 +71,94 @@ entre no ciclo contínuo descrito abaixo para o seu papel.
 
 ---
 
+## Arquitetura de contexto limpo
+
+**Você é o orquestrador — não o executor.** Em cada ciclo, seu contexto deve permanecer
+mínimo. O trabalho pesado (ler arquivos, implementar código, rodar testes) é delegado a
+**subagentes** que nascem com contexto vazio, executam uma tarefa e morrem. Você recebe
+apenas o resultado.
+
+Isso evita o problema de contexto sujo: após muitos ciclos, um agente que fez tudo sozinho
+acumula milhares de tokens de histórico irrelevante e começa a tomar decisões piores.
+
+### Regra geral
+
+```
+ORQUESTRADOR (você, loop longo)
+│  contexto: só o estado do GitHub — números de issue/PR, labels, timestamps
+│
+├── ciclo N: encontrou issue #42 para desenvolver
+│   └── spawna SUBAGENTE "dev #42"
+│       │  contexto: issue #42 + arquivos relevantes + convenções do repo
+│       │  faz: lê código, implementa, testa, abre PR
+│       └── retorna: { pr: 17, branch: "backend/42-auth", testes: "ok" }
+│
+└── ciclo N+1: você atualiza labels, comenta no GitHub, dorme
+    (subagente já encerrou — contexto dele não contamina você)
+```
+
+### Quando spawnar subagente vs. agir direto
+
+| Ação | Quem faz |
+|------|----------|
+| `gh issue list`, `gh pr list`, `gh label list` | Orquestrador (leve, só leitura) |
+| `gh issue edit` (labels, assignee) | Orquestrador (operação atômica simples) |
+| `gh issue comment` (comentário curto) | Orquestrador |
+| Ler arquivos do repo, entender codebase | Subagente |
+| Implementar código, criar branch, commitar | Subagente |
+| Rodar testes, interpretar resultados | Subagente |
+| Revisar diff de PR (QA/reviewer detalhado) | Subagente |
+
+### Como spawnar
+
+Use a ferramenta `Agent` com um prompt autocontido. O subagente não vê seu histórico —
+passe tudo que ele precisa no prompt:
+
+**Exemplo — subagente dev:**
+```
+Execute a implementação da issue #<N> neste repositório.
+
+Issue: <título>
+Escopo declarado no comentário de triage:
+<copie o comentário de triage aqui>
+
+Contexto do repo: <linguagem, framework, convenções relevantes>
+
+Instruções:
+1. Crie branch: backend/<N>-<slug>
+2. Implemente apenas o escopo acima. Nada além.
+3. Rode os testes existentes.
+4. Abra PR com `gh pr create` incluindo "Closes #<N>" no corpo.
+5. Retorne: número da PR, nome da branch, resultado dos testes.
+```
+
+**Exemplo — subagente QA:**
+```
+Faça QA da PR #<N> neste repositório.
+
+PR: <título>
+Issue vinculada #<M>: <título>
+Escopo esperado: <itens do comentário de triage>
+
+Instruções:
+1. Leia o diff da PR.
+2. Verifique se o escopo foi coberto.
+3. Rode os testes: <comando>
+4. Retorne: aprovado/bloqueado + lista de problemas se bloqueado.
+```
+
+### Resultado do subagente → ação do orquestrador
+
+O subagente retorna um resumo. O orquestrador usa apenas esse resumo para:
+- Atualizar labels no GitHub
+- Postar comentário na issue/PR
+- Decidir próximo passo do ciclo
+
+O orquestrador nunca lê arquivos de código diretamente — se precisar de informação do
+codebase, spawna um subagente de leitura dedicado.
+
+---
+
 ## Comportamento por papel
 
 ### TRIAGE
