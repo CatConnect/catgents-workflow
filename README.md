@@ -11,18 +11,20 @@ acontece.
 
 ## Como funciona
 
-Os workers se coordenam através de dois canais compartilhados:
+Os workers se coordenam através de três canais compartilhados:
 
 - **GitHub** → estado do código (issues, PRs, labels)
-- **Knowledge base** → memória do que o sistema aprendeu (signals, LOG.md)
+- **Knowledge base** → memória do que o sistema aprendeu (`kb/signals/`, `kb/LOG.md`)
+- **Canal de presença e inbox** → quem está online e mensagens diretas entre workers (`kb/presence/`, `kb/inbox/`)
 
-Eles nunca se falam diretamente. Um worker escreve no GitHub; outro lê e age.
-É assim que o trabalho compõe sem coordenação central.
+Eles nunca se falam diretamente via API. Um worker escreve no GitHub ou na KB;
+outro lê e age. O canal de presença resolve o único gap: saber quem está rodando
+agora para decidir se deve esperar ou prosseguir.
 
 ```
-pm escreve spec → triage classifica → dev implementa → qa testa → reviewer mergeia
-     ↑                                                                      |
-scout abre issues ←←← qa-monitor detecta regressões ←←←←←←←←←←←←←←←←←←←←
+pm escreve spec → triage classifica → dev implementa → ui-ux revisa → qa testa → reviewer mergeia
+     ↑                                                                                    |
+scout/debt/docs/coverage abrem issues ←← qa-monitor detecta regressões ←←←←←←←←←←←←←←←←
 ```
 
 ---
@@ -45,12 +47,15 @@ scout abre issues ←←← qa-monitor detecta regressões ←←←←←←←
 | `qa-monitor` | Roda testes na main, detecta regressões |
 | `security` | Audita vulnerabilidades, CVEs e segredos expostos |
 | `deps` | Monitora dependências desatualizadas |
+| `coverage` | Mede cobertura por módulo, alerta quando cai abaixo do threshold |
+| `debt` | Detecta complexidade, duplicação e god objects |
+| `docs` | Audita README, docstrings, CHANGELOG e `.env.example` |
 
 ### Produto — pensam antes de caçar
 | Worker | O que faz |
 |--------|-----------|
 | `pm` | Transforma ideias vagas em specs com critérios de aceitação |
-| `ux` | Revisa PRs de frontend pelo ponto de vista do usuário |
+| `ui-ux` | Revisa PRs de frontend (UX + a11y + qualidade) e varre saúde de UI proativamente |
 | `prioritizer` | Reordena o backlog por impacto vs esforço semanalmente |
 
 ### Operações — mantêm o território limpo
@@ -100,8 +105,14 @@ Abra um terminal Claude Code por worker que quiser rodar:
 # Terminal 4 — ou delega pro Jules
 /worker dev-jules
 
-# Terminal 5 — testa PRs
+# Terminal 5 — revisa a experiência e saúde de frontend
+/worker ui-ux
+
+# Terminal 6 — testa PRs
 /worker qa
+
+# Terminal 7 — mergeia
+/worker reviewer
 ```
 
 Para abrir uma PR com verificação:
@@ -122,7 +133,9 @@ Você não precisa rodar todos. Comece pequeno:
 | **Padrão** | 3 | `triage` + `dev` + `qa` |
 | **Completo** | 5 | `triage` + `pm` + `dev` + `qa` + `reviewer` |
 | **Com Jules** | 3 | `pm` + `dev-jules` + `reviewer` |
-| **Descoberta** | 3 | `scout` + `qa-monitor` + `security` (rode à noite) |
+| **Com Jules + UX** | 4 | `pm` + `dev-jules` + `ui-ux` + `reviewer` |
+| **Descoberta** | 4 | `scout` + `qa-monitor` + `coverage` + `docs` (rode à noite) |
+| **Vigilância** | 3 | `security` + `deps` + `debt` |
 
 ---
 
@@ -141,23 +154,54 @@ Você não precisa rodar todos. Comece pequeno:
 
 **Você volta do café.** No GitHub: issues novas, specs escritos, 1 PR aberta.
 
-**Durante o dia**, você trabalha na sua feature complexa. Numa outra aba:
+**Durante o dia**, você trabalha na sua feature complexa. Noutra aba:
 ```
+/worker ui-ux
 /worker qa
+/worker reviewer
 ```
 
-`qa` testa a PR do `dev` com um subagente independente que dirige o app real.
-Aprova. Você mergeia (ou abre `/worker reviewer` pra isso também).
+`ui-ux` revisa a PR de frontend — verifica fluxo, acessibilidade e qualidade de componentes.
+Aprova e notifica o `reviewer` via inbox. `qa` testa com subagente independente que dirige
+o app real. `reviewer` vê `status:qa-approved` + `status:ux-approved` e mergeia.
 
 **Ao final do dia**, `scout` e `qa-monitor` continuam rodando. `qa-monitor`
 detectou que uma PR anterior quebrou o login no Safari — abriu issue com output
-completo antes que chegasse em produção.
+completo antes que chegasse em produção. `coverage` percebeu que o módulo de
+auth caiu para 62% e abriu issue automaticamente.
 
 **Você dormiu. O trabalho não parou.**
 
 ---
 
-## Por que subagentes?
+## Como os workers se coordenam
+
+### GitHub — estado do trabalho
+Labels definem o pipeline. Workers leem e escrevem labels a cada ciclo:
+
+```
+status:needs-scope → pm escreve spec → status:ready
+status:ready       → dev implementa  → status:needs-review
+status:needs-review → ui-ux revisa   → status:ux-approved
+status:ux-approved → qa testa        → status:qa-approved
+status:qa-approved → reviewer mergeia
+```
+
+### Knowledge base — memória persistente
+```
+kb/
+  LOG.md          # registro cross-worker (o que aconteceu e quando)
+  signals/        # padrões recorrentes detectados (frequency, last_seen)
+  presence/       # heartbeat de cada worker (quem está online agora)
+  inbox/          # mensagens diretas entre workers
+```
+
+Workers leem `kb/LOG.md` e `kb/signals/` antes de agir — evita duplicatas e
+propaga contexto entre sessões e terminais. `kb/presence/` resolve o problema
+de coordenação dinâmica: o `reviewer` verifica se o `ui-ux` está rodando antes
+de decidir se espera a revisão ou mergeia sem ela.
+
+### Por que subagentes?
 
 Cada worker roda em loop longo — depois de muitos ciclos, um agente que fez
 tudo sozinho acumula histórico irrelevante e toma decisões piores (contexto sujo).
