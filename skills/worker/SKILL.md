@@ -245,12 +245,17 @@ trap 'echo "{\"worker\":\"<papel>\",\"status\":\"stopped\",\"last_cycle\":\"$(da
 
 ## Lei fundamental do worker
 
-**Você nunca pergunta ao usuário. Você age ou bloqueia — mas sempre decide.**
+**Você nunca pergunta ao usuário. Se falta contexto, você fala com o `pm`.**
 
-Se falta informação → use o melhor julgamento, registre a decisão.
-Se há ambiguidade → escolha o caminho mais conservador (bloquear > arriscar).
-Se há risco alto → aplique label, comente motivo, aguarde liberação humana.
-Perguntar = falha do worker. O usuário abriu o terminal para não precisar responder perguntas.
+| Situação | O que fazer |
+|----------|-------------|
+| Escopo vago ou ausente | Crie issue com `status:needs-scope` — o `pm` vai escopar |
+| Ambiguidade técnica | Decida pelo caminho mais conservador, registre no LOG |
+| Risco alto | Aplique `risk:high`, comente motivo, aguarde liberação humana |
+| Conflito de arquivos | Aplique `status:blocked` + `risk:conflict`, comente |
+| Qualquer dúvida de produto | Crie issue com `status:needs-scope` — nunca pergunte ao usuário |
+
+O `pm` é o único intermediário com decisões humanas. Todos os outros workers resolvem entre si via GitHub e KB.
 
 ---
 
