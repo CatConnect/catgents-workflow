@@ -227,11 +227,8 @@ sleep_atual = min(sleep_atual × 2, sleep_max)
 sleep_atual = sleep_interval
 ```
 
-**Hard stop:** 20 ciclos consecutivos sem trabalho → encerre:
-```
-[worker:<papel>] 🛑 20 ciclos sem trabalho — encerrando.
-Rode novamente quando houver trabalho disponível.
-```
+**Sem trabalho:** backoff até `sleep_max` e permaneça aguardando indefinidamente.
+O worker nunca encerra sozinho — só para quando você fechar o terminal.
 
 **Log de ciclo** (a cada ciclo, no terminal):
 ```
