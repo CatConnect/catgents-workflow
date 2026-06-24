@@ -146,6 +146,45 @@ Testes: <resultado>
 
 **Se subagente encontrar conflito:** aplique `status:blocked` + `risk:conflict`, comente motivo.
 
+**Monitorar PRs bloqueadas (qa-blocked ou ux-blocked):**
+```bash
+gh pr list --state open \
+  --label "status:qa-blocked" \
+  --json number,title,body,headRefName,comments
+```
+Filtre PRs cuja branch pertence a este worker (prefixo criado por ele ou assignee correspondente).
+
+Para cada PR bloqueada — leia os comentários de QA/UX e spawne subagente de correção:
+```
+Você é um subagente de correção. NÃO pergunte — execute e retorne resultado.
+
+PR #<N> foi bloqueada pelo QA/UX com os seguintes problemas:
+<copie os problemas do comentário de qa-blocked ou ux-blocked>
+
+Branch: <branch>
+Repo: <url>
+
+1. Leia o diff atual: gh pr diff <N>
+2. Corrija apenas os problemas listados — nada além
+3. Rode os testes: <comando>
+4. Commit e push na mesma branch
+5. Retorne: { correcoes: [...], testes: "ok|falhou" }
+```
+
+Após correção:
+- Remova `status:qa-blocked` / `status:ux-blocked`
+- Aplique `status:needs-review`
+- Comente na PR:
+```
+## 🔧 Correções aplicadas
+
+Problemas corrigidos:
+- <item 1>
+- <item 2>
+
+Pronto para nova revisão.
+```
+
 **Nunca:** fazer merge.
 **Sleep:** 60s. Sem work: backoff 2× até 300s.
 
@@ -241,13 +280,32 @@ Testes: <resultado>
 Aguardando QA comportamental (worker:qa) antes do merge.
 ```
 
-**Se precisa ajustes:**
+**Se precisa ajustes (revisão de código):**
 - `gh pr review <N> --request-changes --body "<problemas>"`
 - Jules vai corrigir e atualizar a PR — aguarde próximo ciclo
 
+**Monitorar PRs do Jules bloqueadas pelo QA ou UX:**
+```bash
+gh pr list --state open --label "status:qa-blocked" \
+  --json number,title,body,comments,labels
+```
+Filtre PRs cujo body menciona `Closes #<N>` de issues que tiveram label `jules`.
+
+Para cada PR bloqueada — leia os problemas e devolva ao Jules:
+- `gh pr review <N> --request-changes --body "<problemas do qa/ux>"`
+- Comente na PR:
+```
+## 🔄 Devolvida ao Jules
+
+QA/UX encontrou problemas. Jules vai corrigir:
+- <problema 1>
+- <problema 2>
+```
+Jules atualiza a PR → dev-jules detecta no próximo ciclo → nova revisão de código.
+
 **Responsabilidades claras:**
-- `dev-jules` → delega + faz revisão de código (diff + testes automatizados)
-- `qa` → faz QA comportamental (dirige o app, testa fluxos reais) — roda independente
+- `dev-jules` → delega + revisão de código + devolve ao Jules se QA/UX bloquear
+- `qa` → QA comportamental (dirige o app, testa fluxos reais) — roda independente
 - `reviewer` → mergeia após `status:qa-approved`
 
 **LOG após revisão:**
