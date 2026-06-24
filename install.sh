@@ -1,95 +1,52 @@
 #!/bin/bash
-# CatAgents Workflow — Install Script
-# Usage: ./install.sh [project-path]
-# Installs agent-plan/init/implement into <project>/.claude/skills/
-# Installs github-team into ~/.claude/skills/ (global)
+# CatAgents — Install Script
+# Instala worker e pr globalmente em ~/.claude/skills/
+# Usage: ./install.sh
 
 set -e
 
-PROJECT_PATH="${1:-.}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SKILLS_DIR="$HOME/.claude/skills"
 
-echo "🐱 CatAgents Workflow Installer"
+echo "🐱 CatAgents Installer"
 echo ""
 
-# Check project path
-if [ ! -d "$PROJECT_PATH" ]; then
-    echo "❌ Project path not found: $PROJECT_PATH"
-    exit 1
+# Verificar gh CLI
+if ! command -v gh &> /dev/null; then
+    echo "⚠️  gh (GitHub CLI) não encontrado."
+    echo "   Instale em: https://cli.github.com"
+    echo "   Os workers precisam do gh para funcionar."
+    echo ""
 fi
 
-PROJECT_PATH="$(cd "$PROJECT_PATH" && pwd)"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Criar diretório de skills se não existir
+mkdir -p "$SKILLS_DIR"
 
-echo "📁 Project: $PROJECT_PATH"
+# Instalar skills
+echo "📦 Instalando skills em $SKILLS_DIR ..."
 
-# ── Project-level skills ───────────────────────────────────────────────────────
-
-echo ""
-echo "📋 Installing project skills into $PROJECT_PATH/.claude/skills/ ..."
-mkdir -p "$PROJECT_PATH/.claude/skills"
-
-for skill in agent-init agent-plan agent-implement; do
-    if [ -d "$SCRIPT_DIR/skills/$skill" ]; then
-        cp -r "$SCRIPT_DIR/skills/$skill" "$PROJECT_PATH/.claude/skills/"
+for skill in worker pr; do
+    src="$SCRIPT_DIR/skills/$skill"
+    if [ -d "$src" ]; then
+        rm -rf "$SKILLS_DIR/$skill"
+        cp -r "$src" "$SKILLS_DIR/$skill"
         echo "   ✓ $skill"
     else
-        echo "   ⚠ $skill not found in $SCRIPT_DIR/skills/ — skipped"
+        echo "   ⚠ $skill não encontrado — pulado"
     fi
 done
 
-# ── Support dirs ──────────────────────────────────────────────────────────────
-
-mkdir -p "$PROJECT_PATH/.agents"
-mkdir -p "$PROJECT_PATH/docs/specs"
-mkdir -p "$PROJECT_PATH/docs/design"
-mkdir -p "$PROJECT_PATH/docs/tasks"
-
-# ── Config ────────────────────────────────────────────────────────────────────
-
-if [ ! -f "$PROJECT_PATH/.agents/config.json" ]; then
-    cat > "$PROJECT_PATH/.agents/config.json" << 'EOF'
-{
-  "version": "2.0.0",
-  "project_type": "generic",
-  "quality_gates": {
-    "planning": 85,
-    "development": 80,
-    "validation": 85
-  }
-}
-EOF
-    echo "   ✓ .agents/config.json"
-fi
-
-# ── Global skill: github-team ─────────────────────────────────────────────────
-
 echo ""
-echo "🌐 Installing github-team into ~/.claude/skills/ (global) ..."
-mkdir -p "$HOME/.claude/skills"
-
-if [ -d "$SCRIPT_DIR/skills/github-team" ]; then
-    cp -r "$SCRIPT_DIR/skills/github-team" "$HOME/.claude/skills/"
-    echo "   ✓ github-team"
-else
-    echo "   ⚠ github-team not found — skipped"
-fi
-
-# ── Done ──────────────────────────────────────────────────────────────────────
-
+echo "✅ Instalado!"
 echo ""
-echo "✅ Done!"
+echo "Workers disponíveis (abra um terminal por worker):"
 echo ""
-echo "Project skills ($(basename "$PROJECT_PATH")):"
-echo "  /agent-init              — set up the territory"
-echo "  /agent-plan <feature>    — stalk the feature"
-echo "  /agent-implement <feat>  — pounce"
+echo "  Código:      /worker triage | dev | dev-jules | qa | reviewer"
+echo "  Descoberta:  /worker scout | qa-monitor | security | deps"
+echo "  Produto:     /worker pm | ux | prioritizer"
+echo "  Operações:   /worker stale | release"
 echo ""
-echo "Global skill (any repo):"
-echo "  /github-team solo                    — all-in-one terminal"
-echo "  /github-team triage|backend|frontend — dedicated terminals"
-echo "  /github-team qa|reviewer|qa-review   — quality terminals"
-echo "  /github-team duo:triage-dev          — duo preset, terminal 1"
-echo "  /github-team duo:qa-review           — duo preset, terminal 2"
+echo "  Antes de ship:  /pr"
 echo ""
-echo "Tip: run 'gh auth status' to confirm GitHub CLI is authenticated."
+echo "Requisito: gh auth status (GitHub CLI autenticado)"
 echo ""

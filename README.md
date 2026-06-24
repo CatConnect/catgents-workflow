@@ -1,213 +1,178 @@
-# CatAgents Workflow
+# CatAgents
 
-> *"A cat doesn't plan — it pounces at exactly the right moment."*
+> *"Um cat não precisa de ordem pra caçar."*
 
-A system of AI agent skills for Claude Code. Cats decompose features into bounded specs, hunt in parallel, and coordinate teams through GitHub — without ever talking directly to each other.
-
----
-
-## Skills
-
-| Skill | What It Does | Install |
-|-------|-------------|---------|
-| `/agent-init` | Sets up the litter box — project infrastructure | project |
-| `/agent-plan` | Stalks the feature — decomposes into specs, dispatches parallel cats | project |
-| `/agent-implement` | Pounces — parallel task cats execute the plan | project |
-| `/github-team` | Coordinates a multi-terminal dev team via GitHub labels | global |
+Um ecossistema de trabalhadores autônomos para desenvolvimento de software.
+Cada worker acorda, encontra seu trabalho no GitHub, executa, verifica e dorme
+— sem ser prompatado manualmente. Você escreve ideias e toma decisões. O resto
+acontece.
 
 ---
 
-## Installation
+## Como funciona
 
-### One command (Linux / macOS)
+Os workers se coordenam através de dois canais compartilhados:
 
-```bash
-git clone https://github.com/CatConnect/catgents-workflow.git
-./catgents-workflow/install.sh your-project
+- **GitHub** → estado do código (issues, PRs, labels)
+- **Knowledge base** → memória do que o sistema aprendeu (signals, LOG.md)
+
+Eles nunca se falam diretamente. Um worker escreve no GitHub; outro lê e age.
+É assim que o trabalho compõe sem coordenação central.
+
+```
+pm escreve spec → triage classifica → dev implementa → qa testa → reviewer mergeia
+     ↑                                                                      |
+scout abre issues ←←← qa-monitor detecta regressões ←←←←←←←←←←←←←←←←←←←←
 ```
 
-### One command (Windows)
+---
 
+## Workers disponíveis
+
+### Código — coordenam via GitHub labels
+| Worker | O que faz |
+|--------|-----------|
+| `triage` | Classifica issues sem área ou status — alimenta a fila do dev |
+| `dev` | Implementa issues localmente, abre PRs |
+| `dev-jules` | Delega issues pro Jules (Google AI), monitora PRs async |
+| `qa` | Testa PRs com verifier subagente independente |
+| `reviewer` | Mergeia PRs com QA aprovado |
+
+### Descoberta — criam issues, alimentam o backlog
+| Worker | O que faz |
+|--------|-----------|
+| `scout` | Fareja TODOs, funções sem teste, código sem doc |
+| `qa-monitor` | Roda testes na main, detecta regressões |
+| `security` | Audita vulnerabilidades, CVEs e segredos expostos |
+| `deps` | Monitora dependências desatualizadas |
+
+### Produto — pensam antes de caçar
+| Worker | O que faz |
+|--------|-----------|
+| `pm` | Transforma ideias vagas em specs com critérios de aceitação |
+| `ux` | Revisa PRs de frontend pelo ponto de vista do usuário |
+| `prioritizer` | Reordena o backlog por impacto vs esforço semanalmente |
+
+### Operações — mantêm o território limpo
+| Worker | O que faz |
+|--------|-----------|
+| `stale` | Fecha issues e PRs abandonadas |
+| `release` | Gera changelog, bump de versão, abre PR de release |
+
+---
+
+## Instalação
+
+**Linux / macOS:**
+```bash
+git clone https://github.com/CatConnect/catgents-workflow.git
+./catgents-workflow/install.sh
+```
+
+**Windows:**
 ```powershell
 git clone https://github.com/CatConnect/catgents-workflow.git
-.\catgents-workflow\install.ps1 your-project
+.\catgents-workflow\install.ps1
 ```
 
-This installs:
-- `agent-init`, `agent-plan`, `agent-implement` into `your-project/.claude/skills/`
-- `github-team` into `~/.claude/skills/` (global — works in any repo)
+Instala globalmente em `~/.claude/skills/`:
+- `worker` — todos os workers via `/worker <papel>`
+- `pr` — verificação antes de abrir PR via `/pr`
 
-**Requirements:** Claude Code CLI, `gh` (GitHub CLI) authenticated.
+**Requisitos:** Claude Code CLI + `gh` (GitHub CLI) autenticado.
 
 ---
 
-## Skill 1–3: Plan & Implement (`agent-plan` + `agent-implement`)
+## Uso
 
-### Quick start
-
-```
-/agent-init
-/agent-plan "Add user authentication with OAuth2"
-/agent-implement user-auth-oauth2
-```
-
-### How it works
-
-**`/agent-plan`** decomposes a feature into bounded specs. Each spec is one domain concern — one cat's territory. Then it dispatches independent cats in parallel for requirements, architecture, and task breakdown. Cats that depend on each other hunt in sequence; everyone else hunts at the same time.
-
-No assumptions allowed. When a cat hits an architectural decision — tech choice, design tradeoff, pattern — it drops it in `## Open Questions` and the orchestrator asks the user before proceeding.
-
-**`/agent-implement`** reads the resulting `plan.md` and dispatches one cat per task in parallel. Each cat receives only its task's acceptance criteria, its spec's architecture, and the specific files it needs to touch.
-
-```
-/agent-plan "notification system"
-│
-├── Territorial Mapping  →  .agents/<feature>/decomposition.json
-├── Requirements  (parallel cats)  →  docs/specs/…/requirements.md
-├── Architecture  (parallel cats)  →  docs/design/…/architecture.md
-├── Task Breakdown (parallel cats)  →  docs/tasks/…/tasks.md
-└── Synthesis  →  docs/tasks/<feature>/plan.md
-
-/agent-implement "notification system"
-│
-├── [Batch 1]  cat-A  cat-B  (independent tasks, parallel)
-├── [Batch 2]  cat-C  (depends on Batch 1)
-└── Final: test suite + acceptance criteria pass/fail
-```
-
-### Artifact structure
-
-```
-your-project/
-├── .agents/
-│   └── <feature>/
-│       └── decomposition.json
-├── docs/
-│   ├── specs/<feature>/<spec>/requirements.md
-│   ├── design/<feature>/<spec>/architecture.md
-│   └── tasks/<feature>/
-│       ├── <spec>/tasks.md
-│       └── plan.md                ← execution order with parallel batches
-└── .claude/skills/
-    ├── agent-init/
-    ├── agent-plan/
-    └── agent-implement/
-```
-
-### Quality gates
-
-| Gate | Threshold | What it checks |
-|------|-----------|----------------|
-| Purr Test (planning) | 85/100 | Testable requirements, no TBD fields, atomic tasks, resolved dependencies |
-| Nine Lives (implementation) | 80/100 | Conventions followed, all criteria PASS/FAIL, tests pass, no regressions |
-
----
-
-## Skill 4: GitHub Team (`/github-team`)
-
-Coordinate multiple Claude Code terminals using **GitHub labels as shared state**. Each terminal takes a role and loops autonomously. Terminals never talk directly — they read and write the same GitHub repo.
-
-### Team presets
-
-Open as many terminals as you want, each runs one role:
-
-| Preset | Terminals | Commands |
-|--------|-----------|----------|
-| **solo** | 1 | `/github-team solo` |
-| **duo** | 2 | `/github-team duo:triage-dev` + `/github-team duo:qa-review` |
-| **trio** | 3 | `/github-team trio:triage` + `/github-team trio:dev` + `/github-team trio:qa-review` |
-| **quad** | 4 | `triage` + `backend` + `frontend` + `qa-review` |
-| **full** | 5 | `triage` + `backend` + `frontend` + `qa` + `reviewer` |
-
-### Roles
-
-| Role | Finds | Does | Never |
-|------|-------|------|-------|
-| `triage` | Issues without area/status label | Classifies, labels, blocks conflicts | Code, open PRs, merge |
-| `backend` | `area:backend` + `status:ready` | Implement → PR → mark needs-review | Touch frontend, merge |
-| `frontend` | `area:frontend` + `status:ready` | Implement → PR → mark needs-review | Touch backend, merge |
-| `fullstack` | `status:ready` (either area) | Same as backend/frontend | Merge |
-| `qa` | PRs with `status:needs-review` | Test, approve or block | Merge, code |
-| `reviewer` | PRs with `status:qa-approved` | Verify checklist, merge | Merge without QA |
-| `qa-review` | `needs-review` → test → merge | QA + merge combined | Code |
-
-### Label system (auto-created on first run)
-
-```
-area:backend   area:frontend   area:infra   area:db   area:docs   area:qa
-
-status:ready        status:blocked       status:in-progress
-status:needs-scope  status:needs-review  status:qa-approved
-status:qa-blocked   status:ready-to-merge
-
-risk:conflict   risk:migration   risk:auth   risk:high   risk:low
-```
-
-### Issue lifecycle
-
-```
-(new issue)
-    ↓ triage
-needs-scope  →  status:ready  →  dev claims (lock)  →  in-progress  →  PR opens
-                                                                            ↓
-                                                                      needs-review
-                                                                            ↓ qa
-                                                                      qa-approved
-                                                                            ↓ reviewer
-                                                                         merged ✓
-```
-
-### Anti-race lock pattern
-
-When two terminals could claim the same issue simultaneously:
-
-1. Comment `claiming #<N> — agent:<role> — <timestamp>`
-2. Apply `status:in-progress` + assign self
-3. Wait 10 seconds
-4. Re-check: am I the only assignee and the first "claiming" comment?
-   - Yes → proceed
-   - No → undo, pick another issue
-
-### Usage example (full team)
+Abra um terminal Claude Code por worker que quiser rodar:
 
 ```bash
-# Terminal 1
-/github-team triage
+# Terminal 1 — classifica o que chega
+/worker triage
 
-# Terminal 2
-/github-team backend
+# Terminal 2 — escreve specs das ideias
+/worker pm
 
-# Terminal 3
-/github-team frontend
+# Terminal 3 — implementa localmente
+/worker dev
 
-# Terminal 4
-/github-team qa
+# Terminal 4 — ou delega pro Jules
+/worker dev-jules
 
-# Terminal 5
-/github-team reviewer
+# Terminal 5 — testa PRs
+/worker qa
 ```
 
-Each terminal loops, logs what it's doing, and sleeps between cycles (`triage: 120s` · `dev: 60s` · `qa: 60s` · `reviewer: 90s`).
+Para abrir uma PR com verificação:
+```bash
+/pr
+```
 
 ---
 
-## Why one cat per spec
+## Composições prontas
 
-| Problem | Solution |
-|---------|----------|
-| Long contexts bury relevant info | Each cat gets a short, focused context |
-| Single agent drifts between domains | Each cat has one territory |
-| Sequential planning is slow | Independent cats hunt concurrently |
-| Errors in one domain contaminate others | Bounded context — no cross-territory interference |
-| Architect assumes tech stack | Cats ask. Always. |
-| Two terminals grab the same issue | Lock pattern via GitHub comments |
-| Terminals need a coordinator process | GitHub labels ARE the coordinator |
+Você não precisa rodar todos. Comece pequeno:
+
+| Equipe | Terminais | Quando usar |
+|--------|-----------|-------------|
+| **Solo** | 1 | Você mesmo + 1 worker de dev |
+| **Mínimo** | 2 | `pm` + `dev` |
+| **Padrão** | 3 | `triage` + `dev` + `qa` |
+| **Completo** | 5 | `triage` + `pm` + `dev` + `qa` + `reviewer` |
+| **Com Jules** | 3 | `pm` + `dev-jules` + `reviewer` |
+| **Descoberta** | 3 | `scout` + `qa-monitor` + `security` (rode à noite) |
 
 ---
 
-## Compatibility
+## Um dia de trabalho com CatAgents
 
-Works with any Claude Code project: React, Next.js, Vue, Node.js, Python, Go, Rust, Java — any language, any framework. `github-team` requires `gh` CLI authenticated to the target repo.
+**Manhã — você abre 3 terminais e vai tomar café:**
+```
+/worker scout
+/worker pm
+/worker dev
+```
+
+`scout` varre o codebase — abre 3 issues com TODOs críticos e gaps de teste.
+`pm` lê as issues vagas que você escreveu ontem e escreve specs com critérios.
+`dev` pega a primeira issue scopada e começa a implementar.
+
+**Você volta do café.** No GitHub: issues novas, specs escritos, 1 PR aberta.
+
+**Durante o dia**, você trabalha na sua feature complexa. Numa outra aba:
+```
+/worker qa
+```
+
+`qa` testa a PR do `dev` com um subagente independente que dirige o app real.
+Aprova. Você mergeia (ou abre `/worker reviewer` pra isso também).
+
+**Ao final do dia**, `scout` e `qa-monitor` continuam rodando. `qa-monitor`
+detectou que uma PR anterior quebrou o login no Safari — abriu issue com output
+completo antes que chegasse em produção.
+
+**Você dormiu. O trabalho não parou.**
+
+---
+
+## Por que subagentes?
+
+Cada worker roda em loop longo — depois de muitos ciclos, um agente que fez
+tudo sozinho acumula histórico irrelevante e toma decisões piores (contexto sujo).
+
+A solução: o worker é um **orquestrador leve**. Trabalho pesado vai para
+**subagentes** que nascem com contexto vazio, executam uma tarefa e morrem.
+O orquestrador recebe apenas o resultado — contexto permanece limpo
+independente de quantos ciclos passou.
+
+```
+worker (orquestrador — loop longo, contexto mínimo)
+  └── subagente "dev #42" (nasce aqui, contexto focado)
+      └── implementa → retorna resultado
+          (morre — não contamina o worker)
+```
 
 ---
 
