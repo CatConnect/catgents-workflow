@@ -90,28 +90,30 @@ Instala globalmente em `~/.claude/skills/`:
 
 ## Uso
 
-Abra um terminal Claude Code por worker que quiser rodar:
+Cada worker roda em loop contínuo em sua própria sessão do Claude Code.
+Abra uma sessão por worker e rode o comando — ele fica rodando até você fechar o terminal.
+Quando não há trabalho, faz backoff automático e aguarda indefinidamente.
 
 ```bash
-# Terminal 1 — classifica o que chega
+# Sessão 1 — classifica o que chega
 /worker triage
 
-# Terminal 2 — escreve specs das ideias
+# Sessão 2 — escreve specs das ideias
 /worker pm
 
-# Terminal 3 — implementa localmente
+# Sessão 3 — implementa localmente
 /worker dev
 
-# Terminal 4 — ou delega pro Jules
+# Sessão 4 — ou delega pro Jules
 /worker dev-jules
 
-# Terminal 5 — revisa a experiência e saúde de frontend
+# Sessão 5 — revisa a experiência e saúde de frontend
 /worker ui-ux
 
-# Terminal 6 — testa PRs
+# Sessão 6 — testa PRs
 /worker qa
 
-# Terminal 7 — mergeia
+# Sessão 7 — mergeia
 /worker reviewer
 ```
 
@@ -176,44 +178,59 @@ auth caiu para 62% e abriu issue automaticamente.
 
 ## Como os workers se coordenam
 
+### Contrato de ciclo
+
+Todo worker executa as mesmas 5 fases a cada ciclo — o que muda entre eles
+é apenas o filtro e a ação (fase 3):
+
+```
+1. PRESENÇA   — escreve heartbeat (outros workers sabem que está online)
+2. INBOX      — lê mensagens diretas de outros workers
+3. TRABALHO   — busca trabalho no GitHub e age  ← único ponto de variação
+4. KB-WRITE   — registra no LOG se houve ação relevante
+5. SLEEP      — dorme (backoff se não houver trabalho, nunca encerra)
+```
+
 ### GitHub — estado do trabalho
+
 Labels definem o pipeline. Workers leem e escrevem labels a cada ciclo:
 
 ```
-status:needs-scope → pm escreve spec → status:ready
-status:ready       → dev implementa  → status:needs-review
-status:needs-review → ui-ux revisa   → status:ux-approved
-status:ux-approved → qa testa        → status:qa-approved
-status:qa-approved → reviewer mergeia
+status:needs-scope → pm escreve spec    → status:ready
+status:ready       → dev implementa     → status:needs-review (na PR)
+status:needs-review → ui-ux revisa      → status:ux-approved (na PR)
+status:needs-review → qa testa          → status:qa-approved (na PR)
+status:qa-approved → reviewer mergeia   → issue fechada
 ```
+
+Se QA ou UX bloqueiam → `dev` corrige → volta para `status:needs-review`.
+Se `reviewer` mergeia → verifica issues com `risk:conflict` e desbloqueia automaticamente.
 
 ### Knowledge base — memória persistente
+
 ```
 kb/
-  LOG.md          # registro cross-worker (o que aconteceu e quando)
-  signals/        # padrões recorrentes detectados (frequency, last_seen)
-  presence/       # heartbeat de cada worker (quem está online agora)
-  inbox/          # mensagens diretas entre workers
+  LOG.md       # registro cross-worker (o que aconteceu e quando)
+  signals/     # padrões recorrentes (frequency, last_seen)
+  presence/    # heartbeat de cada worker (quem está online agora)
+  inbox/       # mensagens diretas entre workers (consumo único)
 ```
 
-Workers leem `kb/LOG.md` e `kb/signals/` antes de agir — evita duplicatas e
-propaga contexto entre sessões e terminais. `kb/presence/` resolve o problema
-de coordenação dinâmica: o `reviewer` verifica se o `ui-ux` está rodando antes
-de decidir se espera a revisão ou mergeia sem ela.
+`kb/presence/` permite coordenação dinâmica: o `reviewer` verifica se o
+`ui-ux` está online antes de decidir se espera revisão ou mergeia sem ela.
 
 ### Por que subagentes?
 
-Cada worker roda em loop longo — depois de muitos ciclos, um agente que fez
-tudo sozinho acumula histórico irrelevante e toma decisões piores (contexto sujo).
+Workers rodam em loop longo — um agente que faz tudo sozinho acumula
+histórico e toma decisões piores ao longo do tempo (contexto sujo).
 
-A solução: o worker é um **orquestrador leve**. Trabalho pesado vai para
-**subagentes** que nascem com contexto vazio, executam uma tarefa e morrem.
-O orquestrador recebe apenas o resultado — contexto permanece limpo
-independente de quantos ciclos passou.
+O worker é um **orquestrador leve**: trabalho pesado vai para subagentes
+que nascem com contexto vazio, executam uma tarefa e morrem. O orquestrador
+recebe apenas o resultado — contexto permanece limpo indefinidamente.
 
 ```
-worker (orquestrador — loop longo, contexto mínimo)
-  └── subagente "dev #42" (nasce aqui, contexto focado)
+worker (loop longo, contexto mínimo)
+  └── subagente "dev #42" (contexto vazio, nasce aqui)
       └── implementa → retorna resultado
           (morre — não contamina o worker)
 ```
