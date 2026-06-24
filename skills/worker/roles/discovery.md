@@ -68,6 +68,29 @@ Tipo: TODO | função sem teste | código sem doc
   --label "status:needs-scope"
 ```
 
+**Antes de criar issue — cheque a KB:**
+```bash
+# Já existe signal sobre isso?
+grep -l "<termo relevante>" kb/signals/*.md 2>/dev/null
+
+# Já foi logado no LOG recentemente?
+grep "<termo>" kb/LOG.md | tail -5
+```
+Se existe signal → atualize `frequency` e `last_seen`, não crie issue duplicada.
+
+**Ao encontrar padrão recorrente (2ª+ vez) — escreva signal:**
+```bash
+# Exemplo: TODO no mesmo módulo pela 2ª vez
+# → kb/signals/todos-modulo-auth.md com frequency: 2
+```
+
+**Ao final do ciclo — escreva no LOG se criou issues:**
+```
+## <data> · worker:scout · varredura · #discovery
+O que: encontrei <N> TODOs em <módulo>, abri issues #X #Y
+Refs: #issue-X, #issue-Y
+```
+
 **Sleep:** 3600s (1 ciclo por hora é suficiente — o codebase não muda tão rápido).
 
 ---
@@ -123,6 +146,28 @@ Timestamp: <ISO>
 **Cheque de duplicata antes de criar:**
 ```bash
 gh issue list --state open --search "<nome do teste>" --json number,title
+```
+
+**Antes de criar issue — cheque KB e GitHub:**
+```bash
+# Já existe signal sobre essa falha?
+grep -rl "<nome do teste>" kb/signals/ 2>/dev/null
+
+# Já existe issue aberta?
+gh issue list --state open --search "<nome do teste>" --json number,title
+```
+
+**Se falha recorrente (2ª+ vez) — crie ou atualize signal:**
+```bash
+# kb/signals/regressao-<slug>.md
+# frequency++ e nova entrada no Timeline
+```
+
+**Ao final do ciclo — LOG:**
+```
+## <data> · worker:qa-monitor · ciclo de testes · #qa
+O que: <N> testes passando | falha detectada em <teste>, abri #issue-N
+Refs: [[regressao-<slug>]], #issue-N
 ```
 
 **Sleep:** 1800s (30min entre ciclos). Se testes passaram: backoff pra 3600s.

@@ -14,6 +14,18 @@ combustível que alimenta o `dev` e o `dev-jules`.
 Um issue bem scopado pelo pm elimina perguntas de implementação. O dev
 (humano ou Jules) não precisa inventar — só executar.
 
+**Leia a KB antes de cada ciclo:**
+```bash
+# Signals abertos — padrões recorrentes que informam o escopo
+cat kb/signals/*.md 2>/dev/null | grep -A5 "status: open"
+
+# LOG recente — o que outros workers encontraram
+tail -60 kb/LOG.md 2>/dev/null
+```
+Use os signals ao escrever specs: se `kb/signals/login-safari-fragil.md`
+existe com `frequency: 3`, o spec de qualquer feature de auth deve incluir
+"testado no Safari" nos critérios de aceitação.
+
 **Filtro:**
 ```bash
 gh issue list --state open \
@@ -76,6 +88,13 @@ Retorne o spec completo formatado em markdown.
 **Quando NÃO escopar:**
 - Issue já tem critérios de aceitação claros → pule, não reescreva
 - Issue com `risk:high` já liberada → pule, já foi tratada
+
+**Ao final do ciclo — LOG:**
+```
+## <data> · worker:pm · spec escrito · #product
+O que: scopei issue #N "<título>", critérios definidos, marcada status:ready
+Refs: #issue-N
+```
 
 **Nunca:** desenvolver código, fazer merge, criar branches.
 **Sleep:** 180s.

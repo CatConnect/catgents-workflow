@@ -58,7 +58,46 @@ O argumento define qual cat você é:
 
 ---
 
-## Passo 2 — Garantir labels
+## Passo 2 — Garantir knowledge base
+
+A KB é a memória persistente do ecossistema. Workers leem antes de agir e
+escrevem quando encontram algo que outras sessões precisam saber. É o que
+impede duplicatas e faz o sistema compor ao longo do tempo.
+
+Verifique se a KB existe no repo. Se não existir, crie:
+
+```bash
+# Estrutura da KB (na raiz do repo alvo)
+mkdir -p kb/signals kb/docs
+```
+
+Copie os templates se ainda não existirem:
+```bash
+# LOG.md — registro cross-worker
+test -f kb/LOG.md || cp <CLAUDE_SKILL_DIR>/kb/LOG.template.md kb/LOG.md
+
+# Exemplo de signal (referência)
+test -f kb/signal.template.md || cp <CLAUDE_SKILL_DIR>/kb/signal.template.md kb/signal.template.md
+```
+
+**Leia a KB no início de cada ciclo** (não só na inicialização):
+```bash
+# Últimas 10 entradas do LOG — o que outros workers fizeram
+tail -50 kb/LOG.md 2>/dev/null || echo "(LOG vazio)"
+
+# Signals relevantes para o seu papel (leia apenas os abertos)
+ls kb/signals/*.md 2>/dev/null | head -20
+```
+
+Use o LOG e signals para:
+- Não criar issue que já foi criada antes
+- Não reescopar spec que já existe
+- Entender padrões recorrentes antes de agir
+- Saber onde outros workers pararam
+
+---
+
+## Passo 3 — Garantir labels
 
 Antes de entrar no loop, verifique e crie as labels obrigatórias:
 
@@ -86,7 +125,7 @@ gh label create "area:backend" --color "0075ca" --description "Código de backen
 
 ---
 
-## Passo 3 — Carregar comportamento do território
+## Passo 4 — Carregar comportamento do território
 
 Leia o arquivo de roles correspondente ao seu papel antes de entrar no loop:
 
@@ -177,6 +216,56 @@ Sem trabalho disponível:
 ```
 [worker:<papel>] 😴 nada pra caçar — cochilando <Xs>
 ```
+
+---
+
+## Como escrever na KB
+
+**Signal** — use quando encontrar padrão recorrente (2ª+ ocorrência de algo):
+```bash
+# Verificar se signal já existe
+ls kb/signals/ | grep "<slug>"
+
+# Criar novo signal
+cat > kb/signals/<slug>.md << 'EOF'
+---
+kind: signal
+title: "<descrição do padrão>"
+frequency: 2
+last_seen: <YYYY-MM-DD>
+status: open
+tags: [<area>, <tipo>]
+---
+
+## Observação
+<o que se repete>
+
+## Evidência
+- issue #N
+- issue #M
+
+## Timeline
+<data> — <worker> — segunda ocorrência detectada
+EOF
+
+# Atualizar signal existente (incrementar frequency + timeline)
+```
+
+**LOG** — use ao final de ciclo com ação relevante:
+```bash
+# Prepend ao LOG (mais recente primeiro)
+LOG_ENTRY="## $(date +%Y-%m-%d) · worker:<papel> · <ação> · #<tags>
+O que: <uma linha>
+Refs: [[<signal-slug>]], #<issue-N>
+"
+# Insira após o separador --- no topo do LOG.md
+```
+
+**Regras da KB:**
+- Signal só cria na **2ª ocorrência** — uma vez pode ser acidente
+- Nunca duplique signal — atualize o existente (`frequency++`, `timeline`)
+- LOG entries são curtas — máximo 3 linhas
+- Não escreva na KB de outro repo — cada projeto tem sua própria `kb/`
 
 ---
 

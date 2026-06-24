@@ -59,6 +59,14 @@ Aguardar: PR #<N> ser mergeada
 Dúvida: <pergunta objetiva e curta>
 ```
 
+**Leia signals antes de classificar risco:**
+```bash
+# Existe signal sobre a área desta issue?
+grep -rl "<área|módulo>" kb/signals/ 2>/dev/null
+```
+Se existe signal com `frequency >= 3` na mesma área → suba o risco para `risk:high`
+e mencione o signal no comentário de triage.
+
 **Nunca:** escrever código, abrir PR de código, fazer merge.
 **Sleep:** 120s. Sem work: backoff 2× até 300s.
 
@@ -189,6 +197,13 @@ Escopo esperado (do comentário de triage/pm): <copie>
 - `gh pr review <N> --request-changes --body "<problemas>"`
 - Jules vai corrigir e atualizar a PR
 
+**LOG após cada merge/ajuste do Jules:**
+```
+## <data> · worker:dev-jules · PR mergeada · #code
+O que: Jules implementou #issue-N, PR #M aprovada e marcada para merge
+Refs: #issue-N, #pr-M
+```
+
 **Nunca:** fazer merge (deixa pro `reviewer`), pegar `risk:high`.
 **Sleep:** 270s (Jules é lento — não adianta checar a cada 60s).
 
@@ -313,6 +328,13 @@ Resumo: <1-2 linhas do que foi entregue>
 
 **Exceção:** PRs de documentação pura (só `.md`) podem ser mergeadas sem
 `status:qa-approved` — mas o reviewer deve comentar a justificativa explícita.
+
+**LOG após merge:**
+```
+## <data> · worker:reviewer · merge · #code
+O que: mergeada PR #N — "<título>" — fecha issue #M
+Refs: #pr-N, #issue-M
+```
 
 **Nunca:** mergear sem `status:qa-approved` (salvo exceção acima).
 **Sleep:** 90s.
