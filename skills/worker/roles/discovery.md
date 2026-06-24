@@ -384,3 +384,166 @@ Tipo: sem-docstring | readme-desatualizado | changelog-vazio | env-desatualizado
 ```
 
 **Nunca:** criar issue para comentários triviais ou TODOs (território do `scout`).
+
+---
+
+## ANALYST
+
+O cat estrategista de produto. Lê o que foi entregue, o que foi reportado e o
+que o codebase sugere — e propõe melhorias de produto antes que o usuário precise pedir.
+
+**SLEEP:** 43200s | **SLEEP_MAX:** 86400s | **LOCK:** não
+
+### Filtro + Ação
+
+**1. Leia o contexto recente:**
+```bash
+# PRs mergeadas nos últimos 14 dias
+gh pr list --state merged \
+  --search "merged:>$(date -d '14 days ago' +%Y-%m-%d)" \
+  --json number,title,body,files --limit 30
+
+# Issues fechadas nos últimos 14 dias
+gh issue list --state closed \
+  --search "closed:>$(date -d '14 days ago' +%Y-%m-%d)" \
+  --json number,title,body,labels --limit 30
+
+# Signals com frequency >= 2
+grep -rl "frequency: [2-9]" kb/signals/ 2>/dev/null | xargs cat 2>/dev/null
+
+# Issues abertas como needs-scope (não criar duplicatas)
+gh issue list --state open --label "status:needs-scope" --json number,title
+```
+
+**2. Spawne subagente analyst:**
+```
+Você é um subagente de análise de produto. NÃO pergunte — execute e retorne resultado estruturado.
+
+Contexto do produto:
+- PRs mergeadas recentemente: <lista>
+- Issues fechadas recentemente: <lista>
+- Sinais recorrentes da KB: <lista>
+- Issues já abertas (não duplicar): <lista>
+
+Analise em 3 dimensões:
+
+1. FLUXOS COM BURACOS
+   Olhe o que foi implementado — existe algum fluxo de usuário incompleto?
+   Ex: cadastro existe mas não tem recuperação de senha, upload existe mas não tem progresso visual.
+
+2. MELHORIAS DE PRODUTO
+   Com base no que foi entregue, o que tornaria a experiência visivelmente melhor?
+   Ex: paginação sem infinite scroll, formulário sem feedback de erro claro.
+   Foco em impacto para o usuário final — não refatoração técnica (isso é do debt).
+
+3. PADRÕES NOS REPORTS
+   Signals recorrentes indicam algo que deveria ser melhorado estruturalmente?
+   Ex: "login-safari-fragil" com frequency 4 = deveria ter issue de melhoria de auth.
+
+Para cada achado, retorne:
+{ titulo: "...", dimensao: "fluxo|melhoria|padrao", justificativa: "...", area: "frontend|backend|fullstack" }
+Máximo 3 achados por ciclo — priorize os de maior impacto.
+```
+
+**3. Para cada achado — cheque duplicata e crie issue:**
+```bash
+gh issue list --state open --search "<termo>" --json number,title
+# Se não existe:
+gh issue create \
+  --title "improvement: <descrição curta>" \
+  --body "## Melhoria de produto — worker:analyst
+### Contexto
+<justificativa do subagente>
+### Impacto esperado
+<o que muda para o usuário>
+### Área
+<frontend|backend|fullstack>" \
+  --label "status:needs-scope,area:<X>"
+```
+
+**Nunca:** sugerir refatoração técnica (território do `debt`), criar spec (território do `pm`), fazer merge.
+
+---
+
+## BUG-HUNTER
+
+O cat caçador de bugs latentes. Analisa o codebase em busca de padrões de código
+que provavelmente vão falhar em produção — antes de virarem incidentes.
+
+**SLEEP:** 21600s | **SLEEP_MAX:** 43200s | **LOCK:** não
+
+### Filtro + Ação
+
+Spawne 3 subagentes em paralelo:
+
+**Subagente — bugs de lógica:**
+```
+Analise o codebase em busca de padrões de código propensos a falhar.
+
+1. Acesso a propriedades sem guard de null/undefined:
+   ex: obj.user.name sem verificar se obj.user existe
+2. Array access sem verificação de bounds:
+   ex: items[0].id sem checar se items tem elementos
+3. Comparações com == em vez de === (JS/TS)
+4. Variáveis mutadas dentro de loop que deveriam ser imutáveis
+5. Retornos implícitos undefined onde valor é esperado
+
+Foco em: arquivos de negócio, handlers de API, funções de transformação de dados.
+Ignore: arquivos de teste, tipos, migrations.
+Retorne: [{ arquivo: "...", linha: N, padrao: "...", risco: "alto|médio" }]
+```
+
+**Subagente — bugs de async/error handling:**
+```
+Analise o codebase em busca de problemas em código assíncrono e tratamento de erro.
+
+1. Promises sem .catch() ou try/catch ao redor do await
+2. async functions que ignoram o retorno de outras async functions
+3. setTimeout/setInterval com referências que podem ser null quando executam
+4. fetch/axios sem tratamento do caso de erro de rede
+5. Event listeners nunca removidos (memory leak + comportamento fantasma)
+6. Race condition óbvia: duas operações async escrevendo no mesmo recurso sem lock
+
+Foco em: handlers de API, event handlers, funções de fetch/submit.
+Retorne: [{ arquivo: "...", linha: N, padrao: "...", risco: "alto|médio" }]
+```
+
+**Subagente — bugs de validação:**
+```
+Analise o codebase em busca de validação ausente ou incompleta.
+
+1. Inputs de usuário usados diretamente sem sanitização (formulários, query params, body)
+2. Endpoints que assumem formato do body sem validar (sem schema/zod/yup/joi)
+3. Funções que aceitam qualquer tipo mas quebram com string onde esperavam number
+4. Datas parseadas sem verificar se são válidas antes de usar
+5. IDs recebidos da URL usados em query sem checar se são números válidos
+
+Foco em: rotas de API, handlers de formulário, funções utilitárias públicas.
+Retorne: [{ arquivo: "...", linha: N, padrao: "...", risco: "alto|médio" }]
+```
+
+**Para cada achado — cheque KB e issues abertas:**
+```bash
+grep -rl "<arquivo>" kb/signals/ 2>/dev/null
+gh issue list --state open --search "<padrão>" --json number,title
+```
+
+Se padrão recorrente no mesmo módulo → crie/atualize signal `kb/signals/bug-<slug>.md`.
+
+**Crie issue apenas para risco alto — risco médio acumula no signal:**
+```bash
+gh issue create \
+  --title "bug: <padrão> em <módulo>" \
+  --body "## Bug latente — worker:bug-hunter
+Arquivo: \`<path>:<linha>\`
+Padrão: <tipo de bug>
+### Como pode falhar
+<cenário concreto de falha>
+### Evidência
+\`\`\`
+<trecho de código>
+\`\`\`" \
+  --label "status:needs-scope,area:<X>"
+```
+
+**Nunca:** corrigir código diretamente, criar issue para nitpicks de estilo.

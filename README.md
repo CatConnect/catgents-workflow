@@ -43,13 +43,15 @@ scout/debt/docs/coverage abrem issues ←← qa-monitor detecta regressões ←�
 ### Descoberta — criam issues, alimentam o backlog
 | Worker | O que faz |
 |--------|-----------|
-| `scout` | Fareja TODOs, funções sem teste, código sem doc |
+| `scout` | Fareja TODOs e funções sem teste |
 | `qa-monitor` | Roda testes na main, detecta regressões |
 | `security` | Audita vulnerabilidades, CVEs e segredos expostos |
 | `deps` | Monitora dependências desatualizadas |
 | `coverage` | Mede cobertura por módulo, alerta quando cai abaixo do threshold |
 | `debt` | Detecta complexidade, duplicação e god objects |
-| `docs` | Audita README, docstrings, CHANGELOG e `.env.example` |
+| `docs` | Audita README, docstrings, CHANGELOG, `.env.example` e docs avulsas desatualizadas |
+| `analyst` | Lê o que foi entregue e propõe melhorias de produto — fluxos incompletos, UX gaps |
+| `bug-hunter` | Varre o codebase em busca de padrões bug-prone antes de virarem incidentes |
 
 ### Produto — pensam antes de caçar
 | Worker | O que faz |

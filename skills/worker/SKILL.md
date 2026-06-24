@@ -5,7 +5,7 @@ description: >
   Cada worker segue um contrato de ciclo universal e define apenas seu filtro,
   ação e cadência. Use /worker <papel> para iniciar.
   Papéis: triage, dev, dev-jules, qa, reviewer, scout, qa-monitor, security,
-  deps, coverage, debt, docs, pm, ui-ux, prioritizer, stale, release.
+  deps, coverage, debt, docs, analyst, bug-hunter, pm, ui-ux, prioritizer, stale, release.
   Também responde a "iniciar worker", "rodar agente de", "abrir terminal de",
   "quero um cat que faça X", ou qualquer menção a trabalho autônomo no GitHub.
 ---
@@ -41,6 +41,7 @@ mkdir -p kb/signals kb/docs kb/presence
 mkdir -p kb/inbox/triage kb/inbox/dev kb/inbox/dev-jules kb/inbox/qa kb/inbox/reviewer
 mkdir -p kb/inbox/scout kb/inbox/qa-monitor kb/inbox/security kb/inbox/deps
 mkdir -p kb/inbox/coverage kb/inbox/debt kb/inbox/docs
+mkdir -p kb/inbox/analyst kb/inbox/bug-hunter
 mkdir -p kb/inbox/pm kb/inbox/ui-ux kb/inbox/prioritizer
 mkdir -p kb/inbox/stale kb/inbox/release kb/inbox/human
 ```
@@ -71,7 +72,7 @@ Leia o arquivo de roles do seu papel:
 | Papel | Arquivo |
 |-------|---------|
 | `triage` `dev` `dev-jules` `qa` `reviewer` | `roles/code.md` |
-| `scout` `qa-monitor` `security` `deps` `coverage` `debt` `docs` | `roles/discovery.md` |
+| `scout` `qa-monitor` `security` `deps` `coverage` `debt` `docs` `analyst` `bug-hunter` | `roles/discovery.md` |
 | `pm` `ui-ux` `prioritizer` | `roles/product.md` |
 | `stale` `release` | `roles/operations.md` |
 
