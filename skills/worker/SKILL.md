@@ -23,6 +23,44 @@ do que o sistema aprendeu ao longo do tempo.
 
 ---
 
+## Passo 0 — Verificar pré-requisitos
+
+Antes de qualquer coisa, verifique se o ambiente está pronto. Se qualquer
+verificação falhar, **pare e informe o usuário** — não entre no loop.
+
+**1. GitHub CLI autenticado:**
+```bash
+gh auth status
+```
+Se falhar → `[worker:<papel>] ❌ gh não autenticado. Rode: gh auth login`
+
+**2. Repositório GitHub detectado:**
+```bash
+gh repo view --json name 2>/dev/null || echo "FAIL"
+```
+Se falhar → `[worker:<papel>] ❌ Nenhum repositório GitHub detectado no diretório atual.`
+
+**3. Criar estrutura da KB:**
+```bash
+mkdir -p kb/signals kb/docs kb/presence
+mkdir -p kb/inbox/triage kb/inbox/dev kb/inbox/dev-jules kb/inbox/qa kb/inbox/reviewer
+mkdir -p kb/inbox/scout kb/inbox/qa-monitor kb/inbox/security kb/inbox/deps
+mkdir -p kb/inbox/coverage kb/inbox/debt kb/inbox/docs
+mkdir -p kb/inbox/pm kb/inbox/ui-ux kb/inbox/prioritizer
+mkdir -p kb/inbox/stale kb/inbox/release
+```
+Se falhar (sem permissão de escrita) → `[worker:<papel>] ❌ Sem permissão para criar kb/ neste diretório. Verifique as permissões.`
+
+**4. Copiar templates se ainda não existirem:**
+```bash
+test -f kb/LOG.md || cp <CLAUDE_SKILL_DIR>/kb/LOG.template.md kb/LOG.md
+test -f kb/signal.template.md || cp <CLAUDE_SKILL_DIR>/kb/signal.template.md kb/signal.template.md
+```
+
+Somente após todas as verificações passarem, prossiga para o Passo 1.
+
+---
+
 ## Passo 1 — Identificar território
 
 O argumento define qual cat você é:
@@ -68,26 +106,7 @@ A KB é a memória persistente do ecossistema. Workers leem antes de agir e
 escrevem quando encontram algo que outras sessões precisam saber. É o que
 impede duplicatas e faz o sistema compor ao longo do tempo.
 
-Verifique se a KB existe no repo. Se não existir, crie:
-
-```bash
-# Estrutura completa da KB (na raiz do repo alvo)
-mkdir -p kb/signals kb/docs kb/presence
-mkdir -p kb/inbox/triage kb/inbox/dev kb/inbox/dev-jules kb/inbox/qa kb/inbox/reviewer
-mkdir -p kb/inbox/scout kb/inbox/qa-monitor kb/inbox/security kb/inbox/deps
-mkdir -p kb/inbox/coverage kb/inbox/debt kb/inbox/docs
-mkdir -p kb/inbox/pm kb/inbox/ui-ux kb/inbox/prioritizer
-mkdir -p kb/inbox/stale kb/inbox/release
-```
-
-Copie os templates se ainda não existirem:
-```bash
-# LOG.md — registro cross-worker
-test -f kb/LOG.md || cp <CLAUDE_SKILL_DIR>/kb/LOG.template.md kb/LOG.md
-
-# Exemplo de signal (referência)
-test -f kb/signal.template.md || cp <CLAUDE_SKILL_DIR>/kb/signal.template.md kb/signal.template.md
-```
+A estrutura da KB foi garantida no Passo 0. Aqui, apenas leia o estado atual:
 
 ### Canal de comunicação entre workers
 
