@@ -1,70 +1,57 @@
 # Roles de Produto
 
-Workers que pensam antes de caçar — transformam ideias vagas em trabalho
-concreto e mantêm o backlog ordenado por impacto real.
+Workers que pensam antes de caçar — transformam ideias em trabalho concreto
+e mantêm o produto saudável.
+Cada seção define apenas a **fase 3 — TRABALHO** do contrato de ciclo.
+As fases 1, 2, 4 e 5 são universais — veja `SKILL.md`.
 
 ---
 
 ## PM
 
-O cat estrategista. Pega issues sem escopo (`status:needs-scope`) ou com
-corpo vago e transforma em specs com critérios de aceitação claros — o
-combustível que alimenta o `dev` e o `dev-jules`.
+O cat estrategista. Transforma issues vagas em specs com critérios de
+aceitação claros — o combustível que alimenta dev e dev-jules.
 
-Um issue bem scopado pelo pm elimina perguntas de implementação. O dev
-(humano ou Jules) não precisa inventar — só executar.
+**SLEEP:** 180s | **SLEEP_MAX:** 720s | **LOCK:** não
 
-**Início de cada ciclo:**
-```bash
-# Presença
-cat > kb/presence/pm.json << EOF
-{"worker":"pm","last_cycle":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","sleep_interval":180,"status":"idle"}
-EOF
-
-# Inbox
-ls kb/inbox/pm/*.json 2>/dev/null | sort | while read msg; do cat "$msg"; rm "$msg"; done
-```
-
-**Leia a KB antes de cada ciclo:**
-```bash
-# Signals abertos — padrões recorrentes que informam o escopo
-cat kb/signals/*.md 2>/dev/null | grep -A5 "status: open"
-
-# LOG recente — o que outros workers encontraram
-tail -60 kb/LOG.md 2>/dev/null
-```
-Use os signals ao escrever specs: se `kb/signals/login-safari-fragil.md`
-existe com `frequency: 3`, o spec de qualquer feature de auth deve incluir
-"testado no Safari" nos critérios de aceitação.
-
-**Filtro:**
+### Filtro
 ```bash
 gh issue list --state open \
   --label "status:needs-scope" \
   --json number,title,body,labels,comments
 ```
-Também processa issues abertas sem label nenhuma (recém criadas pelo usuário).
+Também processa issues abertas sem nenhuma label (recém criadas pelo usuário).
 
-**Por ciclo, para cada issue sem escopo — spawne subagente pm:**
+### Ação
+
+**Leia a KB antes de escopar:**
+```bash
+cat kb/signals/*.md 2>/dev/null | grep -A5 "status: open"
+tail -60 kb/LOG.md 2>/dev/null
 ```
-Você é um product manager. Leia esta issue e escreva um spec completo.
+Use signals ao escrever specs: se `kb/signals/login-safari-fragil.md` existe
+com `frequency: 3`, qualquer feature de auth deve incluir "testado no Safari".
+
+**Quando NÃO escopar:**
+- Issue já tem critérios de aceitação claros → pule
+- Issue com `risk:high` já liberada → pule, já foi tratada
+
+**Spawne subagente pm:**
+```
+Você é um subagente de product management. NÃO pergunte — execute e retorne resultado estruturado.
 
 Issue #<N>: <título>
-Corpo original: <corpo da issue>
+Corpo original: <corpo>
 Comentários: <comentários relevantes>
+Repo: <url> | Stack: <linguagem/framework — leia README se necessário>
 
-Repo: <url>
-Stack: <linguagem/framework — leia README se necessário>
-
-Escreva um spec com:
+Escreva um spec completo com:
 
 1. USER STORY (uma linha)
    "Como <tipo de usuário>, quero <ação>, para <benefício>"
 
 2. CRITÉRIOS DE ACEITAÇÃO (verificáveis, binários)
-   - [ ] critério concreto 1
-   - [ ] critério concreto 2
-   (cada critério deve ser testável: sim ou não, não "deve funcionar bem")
+   - [ ] critério concreto 1 (testável: sim ou não, não "deve funcionar bem")
 
 3. FORA DO ESCOPO
    - o que explicitamente não faz parte desta issue
@@ -81,74 +68,71 @@ Escreva um spec com:
 Retorne o spec completo formatado em markdown.
 ```
 
-**Após receber o spec, comente na issue:**
-```
-## 📋 Spec
+**Após receber o spec:**
 
-<spec completo do subagente>
-
+```bash
+gh issue comment <N> --body "## 📋 Spec
+<spec completo>
 ---
-*Gerado pelo worker:pm — ajuste se necessário antes de implementar.*
+*Gerado pelo worker:pm — ajuste se necessário antes de implementar.*"
 ```
 
 **Atualize labels:**
 - Remova `status:needs-scope`
-- Aplique `status:ready` (se spec está completo e risco não é alto)
-- Aplique `status:blocked` + `risk:high` se risco for alto (aguarda liberação humana)
+- Risco normal → aplique `status:ready`
+- Risco alto → aplique `status:blocked` + `risk:high`
 
-**Quando NÃO escopar:**
-- Issue já tem critérios de aceitação claros → pule, não reescreva
-- Issue com `risk:high` já liberada → pule, já foi tratada
+**Se `risk:high` — notifique humano:**
+```bash
+# Mencione o owner no comentário (dispara email do GitHub)
+gh issue comment <N> --body "@<owner> Esta issue foi marcada como risk:high e precisa de liberação manual antes de ser implementada."
 
-**Ao final do ciclo — LOG:**
-```
-## <data> · worker:pm · spec escrito · #product
-O que: scopei issue #N "<título>", critérios definidos, marcada status:ready
-Refs: #issue-N
+# Escreva no inbox humano
+MSG="kb/inbox/human/msg-$(date +%s)-pm.json"
+cat > "${MSG}.tmp" << EOF
+{"from":"pm","to":"human","type":"alert","payload":{"message":"Issue #<N> marcada risk:high — requer liberação manual","issue":<N>},"sent_at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}
+EOF
+mv "${MSG}.tmp" "${MSG}"
 ```
 
 **Nunca:** desenvolver código, fazer merge, criar branches.
-**Sleep:** 180s.
 
 ---
 
 ## UI-UX
 
 O cat analista de interface. Dois modos em paralelo: revisa PRs de frontend
-antes do merge (ponto de vista do usuário) e fareja o codebase em busca de
-problemas técnicos de UI — acessibilidade, performance, saúde de componentes.
-Não escreve código, não mergeia.
+antes do merge (ponto de vista do usuário) e varre o codebase em busca de
+problemas técnicos de UI.
 
-**Início de cada ciclo:**
-```bash
-# Presença
-cat > kb/presence/ui-ux.json << EOF
-{"worker":"ui-ux","last_cycle":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","sleep_interval":300,"status":"idle"}
-EOF
+**SLEEP:** 300s | **SLEEP_MAX:** 900s | **LOCK:** sim (ao revisar PR)
 
-# Inbox — mensagens de qa, reviewer, etc.
-ls kb/inbox/ui-ux/*.json 2>/dev/null | sort | while read msg; do cat "$msg"; rm "$msg"; done
-```
+### Filtro
 
----
-
-### Modo 1 — Revisão de PRs
-
-**Filtro — PRs com `status:needs-review` que tocam UI:**
+**PRs para revisar:**
 ```bash
 gh pr list --state open \
   --label "status:needs-review" \
   --json number,title,body,labels,files
 ```
-Arquivos relevantes: `*.tsx`, `*.vue`, `*.html`, `*.css`, `pages/`, `components/`, `views/`, `app/`.
+Filtre PRs que tocam arquivos de UI: `*.tsx`, `*.vue`, `*.html`, `*.css`,
+`pages/`, `components/`, `views/`, `app/`.
+Exclua PRs que já têm `status:ux-approved` ou `status:ux-blocked`.
 
-**Por PR relevante — spawne subagente reviewer de UI/UX:**
+### Ação — Modo 1: Revisão de PR
+
+**Lock pattern:**
+1. `gh pr comment <N> --body "starting UX review — worker:ui-ux — $(date -u +%Y-%m-%dT%H:%M:%SZ)"`
+2. Aguarde 5s
+3. Confirme: nenhum outro "starting UX review" nos últimos 30s
+
+**Spawne subagente UI/UX reviewer:**
 ```
-Você é um analista UI/UX independente. NÃO edite código.
+Você é um subagente de análise UI/UX independente. NÃO edite código. NÃO pergunte.
 
 PR #<N>: <título>
 Issue vinculada: #<M>
-Escopo implementado: <copie do comentário de pm/triage>
+Escopo: <copie do comentário de pm/triage>
 
 Leia o diff: gh pr diff <N>
 
@@ -169,17 +153,17 @@ Avalie em 4 dimensões:
 
 3. CONSISTÊNCIA
    - Nomenclatura bate com o resto do produto?
-   - Componentes reutilizam padrões existentes ou duplicam?
-   - Estilos seguem o design system do projeto?
+   - Componentes reutilizam padrões existentes?
+   - Estilos seguem o design system?
 
-4. QUALIDADE TÉCNICA DE FRONT
-   - Componente tem responsabilidade única ou é um god component?
+4. QUALIDADE TÉCNICA
+   - Componente tem responsabilidade única?
    - Props tipadas corretamente (TypeScript)?
    - Estados de erro e vazio tratados?
 
 Retorne:
 {
-  "veredicto": "aprovado" | "ajustes" | "bloqueado",
+  "veredicto": "aprovado|ajustes|bloqueado",
   "problemas": [
     { "dimensao": "ux|a11y|consistencia|tecnico", "descricao": "...", "severidade": "bloqueante|sugestao" }
   ]
@@ -187,23 +171,30 @@ Retorne:
 ```
 
 **Se bloqueado (problemas bloqueantes):**
-- Aplique `status:ux-blocked` na PR
-- Crie issue `area:frontend` + `status:needs-scope` para cada problema bloqueante
-- Comente na PR vinculando as issues
-- Notifique o reviewer:
 ```bash
+# Aplique label NA PRÓPRIA PR
+gh pr edit <N> --add-label "status:ux-blocked"
+gh pr comment <N> --body "## 🚫 UX bloqueado
+Problemas bloqueantes:
+1. <problema>
+Necessário corrigir antes do merge."
+
+# Notifique o reviewer via inbox
 MSG="kb/inbox/reviewer/msg-$(date +%s)-ui-ux.json"
 cat > "${MSG}.tmp" << EOF
-{"from":"ui-ux","to":"reviewer","type":"ux-blocked","payload":{"pr":<N>,"issues":[]},"sent_at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}
+{"from":"ui-ux","to":"reviewer","type":"ux-blocked","payload":{"pr":<N>},"sent_at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}
 EOF
 mv "${MSG}.tmp" "${MSG}"
 ```
 
 **Se aprovado (ou só sugestões):**
-- Aplique `status:ux-approved` na PR
-- Comente sugestões diretamente na PR (não cria issue)
-- Notifique o reviewer:
 ```bash
+# Aplique label NA PRÓPRIA PR
+gh pr edit <N> --add-label "status:ux-approved"
+gh pr comment <N> --body "## ✅ UX aprovado
+<sugestões opcionais se houver>"
+
+# Notifique o reviewer via inbox
 MSG="kb/inbox/reviewer/msg-$(date +%s)-ui-ux.json"
 cat > "${MSG}.tmp" << EOF
 {"from":"ui-ux","to":"reviewer","type":"ux-approved","payload":{"pr":<N>},"sent_at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}
@@ -211,81 +202,59 @@ EOF
 mv "${MSG}.tmp" "${MSG}"
 ```
 
----
+### Ação — Modo 2: Varredura proativa (a cada 3 ciclos)
 
-### Modo 2 — Descoberta proativa de saúde de UI
-
-A cada ciclo, após processar PRs, spawne subagentes de varredura em paralelo:
+Spawne 3 subagentes em paralelo:
 
 **Subagente — acessibilidade estática:**
 ```
 Audite o codebase em busca de problemas de acessibilidade.
-
-1. Busque imagens sem alt: grep -r "<img" --include="*.tsx,*.vue,*.html" . | grep -v "alt="
-2. Busque botões sem label: elementos <button> ou role="button" sem aria-label e sem texto visível
-3. Busque inputs sem label associado: <input> sem <label for> ou aria-labelledby
-4. Ignore arquivos de teste e storybook
-
-Retorne: [{ arquivo: "...", linha: N, tipo: "img-sem-alt|botao-sem-label|input-sem-label", trecho: "..." }]
+1. Imagens sem alt: grep -r "<img" --include="*.tsx,*.vue,*.html" . | grep -v "alt="
+2. Botões sem label: <button> ou role="button" sem aria-label e sem texto visível
+3. Inputs sem label: <input> sem <label for> ou aria-labelledby
+Ignore arquivos de teste e storybook.
+Retorne: [{ arquivo: "...", linha: N, tipo: "img-sem-alt|botao-sem-label|input-sem-label" }]
 ```
 
 **Subagente — saúde de componentes:**
 ```
-Avalie a saúde técnica dos componentes de UI no repo.
-
-1. Componentes grandes: arquivos *.tsx/*.vue com mais de 200 linhas
-2. Props não tipadas: componentes sem interface/type para props
-3. God components: componentes com mais de 5 responsabilidades distintas (fetch + render + lógica + formulário + navegação)
-4. Componentes duplicados: lógica/estrutura muito similar entre componentes diferentes
-
-Retorne: [{ arquivo: "...", tipo: "grande|sem-tipos|god-component|duplicado", linhas: N, detalhe: "..." }]
+Avalie a saúde técnica dos componentes de UI.
+1. Componentes grandes: *.tsx/*.vue com mais de 200 linhas
+2. Props não tipadas: sem interface/type para props
+3. God components: mais de 5 responsabilidades distintas
+4. Componentes duplicados: lógica/estrutura muito similar
+Retorne: [{ arquivo: "...", tipo: "grande|sem-tipos|god-component|duplicado", linhas: N }]
 ```
 
 **Subagente — performance de frontend:**
 ```
-Identifique problemas de performance de frontend no codebase.
-
-1. Imagens sem lazy loading: <img> sem loading="lazy" fora do fold inicial
-2. Imports sem code splitting: imports diretos de bibliotecas pesadas no bundle principal
-3. Re-renders desnecessários: componentes React sem memo/useMemo/useCallback em listas longas
-4. Assets sem otimização: imagens .png/.jpg acima de 200kb commitadas no repo
-
-Retorne: [{ arquivo: "...", tipo: "sem-lazy|sem-split|re-render|asset-pesado", impacto: "alto|médio", detalhe: "..." }]
+Identifique problemas de performance de frontend.
+1. Imagens sem lazy loading fora do fold inicial
+2. Imports diretos de bibliotecas pesadas no bundle principal
+3. Componentes React sem memo/useMemo em listas longas
+4. Imagens .png/.jpg acima de 200kb commitadas
+Retorne: [{ arquivo: "...", tipo: "...", impacto: "alto|médio" }]
 ```
 
-**Para cada achado relevante — cheque KB antes de criar issue:**
+Para cada achado — cheque KB antes de criar issue:
 ```bash
 grep -rl "<termo>" kb/signals/ 2>/dev/null
 gh issue list --state open --search "<termo>" --json number,title
 ```
+Crie issue com `area:frontend` + `status:needs-scope` se não existir.
 
-Se padrão recorrente (2ª+ vez) → atualize signal em `kb/signals/`.  
-Se novo → crie issue com `area:frontend` + `status:needs-scope`.
-
-**Nunca:** bloquear PR por estilo opinativo, criar issues de nitpick cosmético.
-**Sleep:** 300s (modo revisão). Varredura proativa: a cada 3 ciclos (≈15min).
+**Nunca:** bloquear PR por estilo opinativo, fazer merge, escrever código.
 
 ---
 
 ## PRIORITIZER
 
-O cat ordenador. Periodicamente reavalia o backlog e sugere nova ordem de
-prioridade baseada em impacto vs esforço, dependências e idade das issues.
+O cat ordenador. Reavalia o backlog semanalmente e sugere ordem de prioridade.
+Não muda labels — sugere, e o humano decide.
 
-Não muda labels sozinho — comenta a sugestão e deixa o humano decidir.
+**SLEEP:** 604800s | **SLEEP_MAX:** 604800s | **LOCK:** não
 
-**Início de cada ciclo:**
-```bash
-# Presença
-cat > kb/presence/prioritizer.json << EOF
-{"worker":"prioritizer","last_cycle":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","sleep_interval":604800,"status":"idle"}
-EOF
-
-# Inbox
-ls kb/inbox/prioritizer/*.json 2>/dev/null | sort | while read msg; do cat "$msg"; rm "$msg"; done
-```
-
-**Filtro — issues com `status:ready` (backlog disponível):**
+### Filtro
 ```bash
 gh issue list --state open \
   --label "status:ready" \
@@ -293,32 +262,33 @@ gh issue list --state open \
   --limit 50
 ```
 
+### Ação
+
 **Spawne subagente prioritizer:**
 ```
-Você é um product strategist. Avalie e ordene estas issues por prioridade.
+Você é um subagente de product strategy. NÃO pergunte — execute e retorne resultado estruturado.
 
 Issues disponíveis:
-<lista com número, título, área, risco, data de criação>
+<lista: número, título, área, risco, data de criação>
 
-Critérios de avaliação:
-1. IMPACTO — o quanto afeta o usuário final ou o negócio
-2. ESFORÇO — estimativa de complexidade técnica (P, M, G)
+Avalie por:
+1. IMPACTO — afeta o usuário final ou o negócio?
+2. ESFORÇO — complexidade técnica estimada (P, M, G)
 3. RISCO — risk:high bloqueia, risk:low libera
-4. IDADE — issues antigas com espera longa ganham pontos
+4. IDADE — issues antigas ganham pontos
 5. DEPENDÊNCIAS — issues desbloqueadas por outras têm precedência
 
 Retorne:
-- Top 5 issues por prioridade com justificativa de 1 linha cada
-- Issues que deveriam ser descartadas ou rediscutidas (se houver)
+- Top 5 por prioridade com justificativa de 1 linha cada
+- Issues que deveriam ser descartadas ou rediscutidas
 - Padrão observado no backlog (ex: "muita dívida técnica acumulada")
 ```
 
-**Comente no GitHub como summary (não em cada issue individual):**
+**Crie issue de priorização semanal:**
 ```bash
-# Crie uma issue de "priorização semanal" ou comente numa issue de tracking
 gh issue create \
-  --title "🎯 Priorização — <data>" \
-  --body "## Sugestão de prioridade do worker:prioritizer
+  --title "🎯 Priorização — $(date +%Y-%m-%d)" \
+  --body "## Sugestão de prioridade — worker:prioritizer
 
 ### Top 5 para esta semana
 1. #<N> — <título> — <motivo>
@@ -328,9 +298,6 @@ gh issue create \
 <padrão observado>
 
 ---
-*Sugestão — humano decide a ordem final.*
-" \
+*Sugestão — humano decide a ordem final.*" \
   --label "area:docs"
 ```
-
-**Sleep:** 604800s (1 vez por semana).
