@@ -4,8 +4,9 @@ description: >
   Ecossistema de cats autônomos para desenvolvimento de software via GitHub.
   Cada worker demarca seu território, encontra trabalho, executa com contexto
   limpo via subagentes, e dorme entre ciclos — sem ser prompatado manualmente.
-  Use /worker <papel> para iniciar. Papéis: triage, pm, ux, prioritizer, dev,
-  dev-jules, qa, reviewer, scout, qa-monitor, security, deps, stale, release.
+  Use /worker <papel> para iniciar. Papéis: triage, pm, ui-ux, prioritizer, dev,
+  dev-jules, qa, reviewer, scout, qa-monitor, security, deps, coverage, debt,
+  docs, stale, release.
   Também responde a "iniciar worker", "rodar agente de", "abrir terminal de",
   "quero um cat que faça X", ou qualquer menção a trabalho autônomo no GitHub.
 ---
@@ -42,12 +43,15 @@ O argumento define qual cat você é:
 | `qa-monitor` | Vigia o app — roda testes na main, detecta regressões |
 | `security` | Guarda a toca — audita vulnerabilidades e segredos expostos |
 | `deps` | Cuida das paredes — deps desatualizadas e CVEs |
+| `coverage` | Mede o território — cobertura por módulo, alerta quando cai |
+| `debt` | Sente o peso — complexidade, duplicação, god objects |
+| `docs` | Lê os mapas — README, docstrings, CHANGELOG, .env.example |
 
 ### Produto — pensam antes de caçar
 | Papel | Território |
 |-------|-----------|
 | `pm` | Planeja a caçada — transforma ideias vagas em specs com critérios |
-| `ux` | Julga a experiência — revisa fluxos do ponto de vista do usuário |
+| `ui-ux` | Analista de interface — revisa PRs de front + fareja saúde de UI/a11y/perf |
 | `prioritizer` | Ordena a fila — reordena backlog por impacto vs esforço |
 
 ### Operações — mantêm o território limpo
@@ -68,7 +72,7 @@ Verifique se a KB existe no repo. Se não existir, crie:
 
 ```bash
 # Estrutura da KB (na raiz do repo alvo)
-mkdir -p kb/signals kb/docs
+mkdir -p kb/signals kb/docs kb/presence kb/inbox/<seu-papel>
 ```
 
 Copie os templates se ainda não existirem:
@@ -80,20 +84,87 @@ test -f kb/LOG.md || cp <CLAUDE_SKILL_DIR>/kb/LOG.template.md kb/LOG.md
 test -f kb/signal.template.md || cp <CLAUDE_SKILL_DIR>/kb/signal.template.md kb/signal.template.md
 ```
 
+### Canal de comunicação entre workers
+
+Dois mecanismos complementam o GitHub como canal:
+
+**`kb/presence/<worker>.json` — heartbeat de presença**
+
+Cada worker escreve no início de **cada ciclo**:
+```bash
+cat > kb/presence/<seu-papel>.json << EOF
+{
+  "worker": "<seu-papel>",
+  "last_cycle": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "sleep_interval": <seu-sleep-em-segundos>,
+  "status": "idle"
+}
+EOF
+```
+
+Regra universal: `now - last_cycle > 2 × sleep_interval` = worker offline.
+
+Registre cleanup ao encerrar:
+```bash
+trap 'echo "{\"worker\":\"<seu-papel>\",\"status\":\"stopped\",\"last_cycle\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > kb/presence/<seu-papel>.json' EXIT INT TERM
+```
+
+**`kb/inbox/<worker>/` — mensagens diretas entre workers**
+
+Para enviar mensagem a outro worker:
+```bash
+# Sender escreve para o inbox do destinatário (write é atômico via tmp+mv)
+MSG_FILE="kb/inbox/<destinatário>/msg-$(date +%s)-<seu-papel>.json"
+cat > "${MSG_FILE}.tmp" << EOF
+{
+  "from": "<seu-papel>",
+  "to": "<destinatário>",
+  "type": "<tipo>",
+  "payload": { ... },
+  "sent_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+EOF
+mv "${MSG_FILE}.tmp" "${MSG_FILE}"
+```
+
+Para ler seu inbox no início de cada ciclo:
+```bash
+# Liste mensagens não processadas
+ls kb/inbox/<seu-papel>/*.json 2>/dev/null | sort | while read msg; do
+  cat "$msg"
+  rm "$msg"   # deleta após processar
+done
+```
+
+**Tipos de mensagem padronizados:**
+
+| type | sender | receiver | payload |
+|------|--------|----------|---------|
+| `ux-approved` | ui-ux | reviewer | `{ "pr": N }` |
+| `ux-blocked` | ui-ux | reviewer | `{ "pr": N, "issues": [...] }` |
+| `qa-needs-ux` | qa | ui-ux | `{ "pr": N, "files": [...] }` |
+| `alert` | qualquer | qualquer | `{ "message": "..." }` |
+
 **Leia a KB no início de cada ciclo** (não só na inicialização):
 ```bash
-# Últimas 10 entradas do LOG — o que outros workers fizeram
+# Inbox — mensagens de outros workers
+ls kb/inbox/<seu-papel>/*.json 2>/dev/null | sort | while read msg; do
+  cat "$msg"; rm "$msg"
+done
+
+# Últimas entradas do LOG — o que outros workers fizeram
 tail -50 kb/LOG.md 2>/dev/null || echo "(LOG vazio)"
 
-# Signals relevantes para o seu papel (leia apenas os abertos)
+# Signals relevantes para o seu papel
 ls kb/signals/*.md 2>/dev/null | head -20
 ```
 
-Use o LOG e signals para:
+Use o LOG, signals e inbox para:
 - Não criar issue que já foi criada antes
 - Não reescopar spec que já existe
 - Entender padrões recorrentes antes de agir
 - Saber onde outros workers pararam
+- Coordenar com workers online sem polling constante
 
 ---
 
@@ -111,6 +182,7 @@ gh label list --limit 100
 **Status** (cor `e4e669`):
 `status:needs-scope` `status:ready` `status:in-progress` `status:blocked`
 `status:needs-review` `status:qa-approved` `status:qa-blocked`
+`status:ux-approved` `status:ux-blocked`
 
 **Risco** (cor `d93f0b`):
 `risk:low` `risk:high` `risk:conflict` `risk:migration` `risk:auth`
@@ -132,11 +204,15 @@ Leia o arquivo de roles correspondente ao seu papel antes de entrar no loop:
 | Seu papel | Arquivo a ler |
 |-----------|---------------|
 | `triage`, `dev`, `dev-jules`, `qa`, `reviewer` | `roles/code.md` |
-| `scout`, `qa-monitor`, `security`, `deps` | `roles/discovery.md` |
-| `pm`, `ux`, `prioritizer` | `roles/product.md` |
+| `scout`, `qa-monitor`, `security`, `deps`, `coverage`, `debt`, `docs` | `roles/discovery.md` |
+| `pm`, `ui-ux`, `prioritizer` | `roles/product.md` |
 | `stale`, `release` | `roles/operations.md` |
 
-Após ler, anuncie no terminal:
+Após ler, registre cleanup e anuncie:
+```bash
+# Garante que o presence é atualizado ao encerrar (Ctrl+C, kill, etc.)
+trap 'echo "{\"worker\":\"<papel>\",\"status\":\"stopped\",\"last_cycle\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > kb/presence/<papel>.json' EXIT INT TERM
+```
 ```
 [worker:<papel>] 🐱 território demarcado — iniciando loop
 ```

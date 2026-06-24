@@ -14,6 +14,17 @@ combustível que alimenta o `dev` e o `dev-jules`.
 Um issue bem scopado pelo pm elimina perguntas de implementação. O dev
 (humano ou Jules) não precisa inventar — só executar.
 
+**Início de cada ciclo:**
+```bash
+# Presença
+cat > kb/presence/pm.json << EOF
+{"worker":"pm","last_cycle":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","sleep_interval":180,"status":"idle"}
+EOF
+
+# Inbox
+ls kb/inbox/pm/*.json 2>/dev/null | sort | while read msg; do cat "$msg"; rm "$msg"; done
+```
+
 **Leia a KB antes de cada ciclo:**
 ```bash
 # Signals abertos — padrões recorrentes que informam o escopo
@@ -101,66 +112,158 @@ Refs: #issue-N
 
 ---
 
-## UX
+## UI-UX
 
-O cat de experiência. Revisa PRs abertas e issues implementadas do ponto de
-vista do usuário — não do código. Encontra fricções, fluxos confusos e
-feedbacks visuais ausentes antes do merge.
+O cat analista de interface. Dois modos em paralelo: revisa PRs de frontend
+antes do merge (ponto de vista do usuário) e fareja o codebase em busca de
+problemas técnicos de UI — acessibilidade, performance, saúde de componentes.
+Não escreve código, não mergeia.
 
-**Filtro — PRs com `status:needs-review` em área frontend:**
+**Início de cada ciclo:**
+```bash
+# Presença
+cat > kb/presence/ui-ux.json << EOF
+{"worker":"ui-ux","last_cycle":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","sleep_interval":300,"status":"idle"}
+EOF
+
+# Inbox — mensagens de qa, reviewer, etc.
+ls kb/inbox/ui-ux/*.json 2>/dev/null | sort | while read msg; do cat "$msg"; rm "$msg"; done
+```
+
+---
+
+### Modo 1 — Revisão de PRs
+
+**Filtro — PRs com `status:needs-review` que tocam UI:**
 ```bash
 gh pr list --state open \
   --label "status:needs-review" \
   --json number,title,body,labels,files
 ```
-Filtre PRs que tocam arquivos de UI: `*.tsx`, `*.vue`, `*.html`, `*.css`,
-`pages/`, `components/`, `views/`, `app/`.
+Arquivos relevantes: `*.tsx`, `*.vue`, `*.html`, `*.css`, `pages/`, `components/`, `views/`, `app/`.
 
-**Por PR relevante — spawne subagente UX:**
+**Por PR relevante — spawne subagente reviewer de UI/UX:**
 ```
-Você é um UX reviewer independente. NÃO edite código.
+Você é um analista UI/UX independente. NÃO edite código.
 
 PR #<N>: <título>
 Issue vinculada: #<M>
 Escopo implementado: <copie do comentário de pm/triage>
 
-Leia o diff da PR: gh pr diff <N>
+Leia o diff: gh pr diff <N>
 
-Avalie do ponto de vista do usuário:
+Avalie em 4 dimensões:
 
-1. FEEDBACK VISUAL
+1. EXPERIÊNCIA DO USUÁRIO
    - Estados de loading existem?
-   - Erros são comunicados com mensagem útil (não só "erro")?
+   - Erros comunicados com mensagem útil (não só "erro")?
    - Ações destrutivas têm confirmação?
-
-2. FLUXO
-   - O caminho feliz faz sentido sem documentação?
-   - Casos de borda têm tratamento visível?
    - O usuário sabe o que aconteceu após uma ação?
+   - Caminho feliz faz sentido sem documentação?
+
+2. ACESSIBILIDADE
+   - Elementos interativos têm aria-label ou texto visível?
+   - Imagens têm alt text?
+   - Formulários têm labels associados?
+   - Fluxo navegável por teclado?
 
 3. CONSISTÊNCIA
    - Nomenclatura bate com o resto do produto?
-   - Componentes reutilizam padrões existentes?
+   - Componentes reutilizam padrões existentes ou duplicam?
+   - Estilos seguem o design system do projeto?
+
+4. QUALIDADE TÉCNICA DE FRONT
+   - Componente tem responsabilidade única ou é um god component?
+   - Props tipadas corretamente (TypeScript)?
+   - Estados de erro e vazio tratados?
 
 Retorne:
 {
-  "veredicto": "ok" | "tem_problemas",
+  "veredicto": "aprovado" | "ajustes" | "bloqueado",
   "problemas": [
-    { "tipo": "feedback|fluxo|consistência", "descrição": "...", "severidade": "bloqueante|sugestão" }
+    { "dimensao": "ux|a11y|consistencia|tecnico", "descricao": "...", "severidade": "bloqueante|sugestao" }
   ]
 }
 ```
 
-**Se tem problemas bloqueantes:**
-- Crie issue com `area:frontend` + `status:needs-scope`
-- Comente na PR vinculando a issue
+**Se bloqueado (problemas bloqueantes):**
+- Aplique `status:ux-blocked` na PR
+- Crie issue `area:frontend` + `status:needs-scope` para cada problema bloqueante
+- Comente na PR vinculando as issues
+- Notifique o reviewer:
+```bash
+MSG="kb/inbox/reviewer/msg-$(date +%s)-ui-ux.json"
+cat > "${MSG}.tmp" << EOF
+{"from":"ui-ux","to":"reviewer","type":"ux-blocked","payload":{"pr":<N>,"issues":[]},"sent_at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}
+EOF
+mv "${MSG}.tmp" "${MSG}"
+```
 
-**Se só sugestões:**
-- Comente diretamente na PR (não cria issue)
-- Não bloqueia o merge
+**Se aprovado (ou só sugestões):**
+- Aplique `status:ux-approved` na PR
+- Comente sugestões diretamente na PR (não cria issue)
+- Notifique o reviewer:
+```bash
+MSG="kb/inbox/reviewer/msg-$(date +%s)-ui-ux.json"
+cat > "${MSG}.tmp" << EOF
+{"from":"ui-ux","to":"reviewer","type":"ux-approved","payload":{"pr":<N>},"sent_at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}
+EOF
+mv "${MSG}.tmp" "${MSG}"
+```
 
-**Nunca:** bloquear PR por problemas de estilo opinativo. Foco em usabilidade real.
-**Sleep:** 300s.
+---
+
+### Modo 2 — Descoberta proativa de saúde de UI
+
+A cada ciclo, após processar PRs, spawne subagentes de varredura em paralelo:
+
+**Subagente — acessibilidade estática:**
+```
+Audite o codebase em busca de problemas de acessibilidade.
+
+1. Busque imagens sem alt: grep -r "<img" --include="*.tsx,*.vue,*.html" . | grep -v "alt="
+2. Busque botões sem label: elementos <button> ou role="button" sem aria-label e sem texto visível
+3. Busque inputs sem label associado: <input> sem <label for> ou aria-labelledby
+4. Ignore arquivos de teste e storybook
+
+Retorne: [{ arquivo: "...", linha: N, tipo: "img-sem-alt|botao-sem-label|input-sem-label", trecho: "..." }]
+```
+
+**Subagente — saúde de componentes:**
+```
+Avalie a saúde técnica dos componentes de UI no repo.
+
+1. Componentes grandes: arquivos *.tsx/*.vue com mais de 200 linhas
+2. Props não tipadas: componentes sem interface/type para props
+3. God components: componentes com mais de 5 responsabilidades distintas (fetch + render + lógica + formulário + navegação)
+4. Componentes duplicados: lógica/estrutura muito similar entre componentes diferentes
+
+Retorne: [{ arquivo: "...", tipo: "grande|sem-tipos|god-component|duplicado", linhas: N, detalhe: "..." }]
+```
+
+**Subagente — performance de frontend:**
+```
+Identifique problemas de performance de frontend no codebase.
+
+1. Imagens sem lazy loading: <img> sem loading="lazy" fora do fold inicial
+2. Imports sem code splitting: imports diretos de bibliotecas pesadas no bundle principal
+3. Re-renders desnecessários: componentes React sem memo/useMemo/useCallback em listas longas
+4. Assets sem otimização: imagens .png/.jpg acima de 200kb commitadas no repo
+
+Retorne: [{ arquivo: "...", tipo: "sem-lazy|sem-split|re-render|asset-pesado", impacto: "alto|médio", detalhe: "..." }]
+```
+
+**Para cada achado relevante — cheque KB antes de criar issue:**
+```bash
+grep -rl "<termo>" kb/signals/ 2>/dev/null
+gh issue list --state open --search "<termo>" --json number,title
+```
+
+Se padrão recorrente (2ª+ vez) → atualize signal em `kb/signals/`.  
+Se novo → crie issue com `area:frontend` + `status:needs-scope`.
+
+**Nunca:** bloquear PR por estilo opinativo, criar issues de nitpick cosmético.
+**Sleep:** 300s (modo revisão). Varredura proativa: a cada 3 ciclos (≈15min).
 
 ---
 
@@ -170,6 +273,17 @@ O cat ordenador. Periodicamente reavalia o backlog e sugere nova ordem de
 prioridade baseada em impacto vs esforço, dependências e idade das issues.
 
 Não muda labels sozinho — comenta a sugestão e deixa o humano decidir.
+
+**Início de cada ciclo:**
+```bash
+# Presença
+cat > kb/presence/prioritizer.json << EOF
+{"worker":"prioritizer","last_cycle":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","sleep_interval":604800,"status":"idle"}
+EOF
+
+# Inbox
+ls kb/inbox/prioritizer/*.json 2>/dev/null | sort | while read msg; do cat "$msg"; rm "$msg"; done
+```
 
 **Filtro — issues com `status:ready` (backlog disponível):**
 ```bash

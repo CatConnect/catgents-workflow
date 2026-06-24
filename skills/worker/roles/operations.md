@@ -10,6 +10,17 @@ empacotam o que foi entregue.
 O cat limpador. Encontra issues e PRs que ninguém tocou há muito tempo e
 limpa o board — comentando, fechando ou escalando conforme a situação.
 
+**Início de cada ciclo:**
+```bash
+# Presença
+cat > kb/presence/stale.json << EOF
+{"worker":"stale","last_cycle":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","sleep_interval":86400,"status":"idle"}
+EOF
+
+# Inbox
+ls kb/inbox/stale/*.json 2>/dev/null | sort | while read msg; do cat "$msg"; rm "$msg"; done
+```
+
 **Filtro — issues sem atividade:**
 ```bash
 # Issues abertas sem atualização há mais de 30 dias
@@ -66,6 +77,17 @@ PRs abertas há mais de 14 dias sem review → comente pedindo status.
 
 O cat entregador. Quando a branch principal está estável após um conjunto de
 PRs mergeadas, empacota o trabalho em um release bem documentado.
+
+**Início de cada ciclo:**
+```bash
+# Presença
+cat > kb/presence/release.json << EOF
+{"worker":"release","last_cycle":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","sleep_interval":3600,"status":"idle"}
+EOF
+
+# Inbox
+ls kb/inbox/release/*.json 2>/dev/null | sort | while read msg; do cat "$msg"; rm "$msg"; done
+```
 
 **Trigger manual** (você chama quando quer fazer release):
 `/worker release`

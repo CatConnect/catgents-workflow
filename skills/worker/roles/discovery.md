@@ -16,6 +16,17 @@ achados reais antes que virem bugs em produção.
 O cat farejador. Lê o codebase em busca de problemas estáticos — sem rodar
 nada. Seu trabalho é encontrar o que os devs deixaram pra trás.
 
+**Início de cada ciclo:**
+```bash
+# Presença
+cat > kb/presence/scout.json << EOF
+{"worker":"scout","last_cycle":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","sleep_interval":3600,"status":"idle"}
+EOF
+
+# Inbox
+ls kb/inbox/scout/*.json 2>/dev/null | sort | while read msg; do cat "$msg"; rm "$msg"; done
+```
+
 **O que o scout procura (spawne subagente por categoria):**
 
 **Subagente — TODOs e FIXMEs:**
@@ -102,6 +113,17 @@ Detecta regressões antes que cheguem em produção.
 
 **Pré-requisito:** repo precisa ter `scripts/dev-local.sh` ou equivalente.
 
+**Início de cada ciclo:**
+```bash
+# Presença
+cat > kb/presence/qa-monitor.json << EOF
+{"worker":"qa-monitor","last_cycle":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","sleep_interval":1800,"status":"idle"}
+EOF
+
+# Inbox
+ls kb/inbox/qa-monitor/*.json 2>/dev/null | sort | while read msg; do cat "$msg"; rm "$msg"; done
+```
+
 **Por ciclo:**
 
 **1. Rode os testes:**
@@ -179,6 +201,17 @@ Refs: [[regressao-<slug>]], #issue-N
 O cat guarda. Audita o codebase em busca de vulnerabilidades de segurança,
 segredos expostos e dependências com CVE.
 
+**Início de cada ciclo:**
+```bash
+# Presença
+cat > kb/presence/security.json << EOF
+{"worker":"security","last_cycle":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","sleep_interval":7200,"status":"idle"}
+EOF
+
+# Inbox
+ls kb/inbox/security/*.json 2>/dev/null | sort | while read msg; do cat "$msg"; rm "$msg"; done
+```
+
 **Por ciclo, spawne subagentes em paralelo:**
 
 **Subagente — audit de dependências:**
@@ -246,6 +279,17 @@ Arquivo: \`<path>:<linha>\`
 O cat de manutenção. Monitora dependências desatualizadas e abre issues
 organizadas para atualização.
 
+**Início de cada ciclo:**
+```bash
+# Presença
+cat > kb/presence/deps.json << EOF
+{"worker":"deps","last_cycle":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","sleep_interval":86400,"status":"idle"}
+EOF
+
+# Inbox
+ls kb/inbox/deps/*.json 2>/dev/null | sort | while read msg; do cat "$msg"; rm "$msg"; done
+```
+
 **Por ciclo, spawne subagente:**
 ```
 Verifique dependências desatualizadas e vulneráveis no repo.
@@ -287,3 +331,278 @@ gh issue list --state open --search "deps: atualizar" --json number,title
 ```
 
 **Sleep:** 86400s (1 vez por dia é mais que suficiente).
+
+---
+
+## COVERAGE
+
+O cat medidor. Monitora cobertura de testes por módulo e detecta quando áreas
+críticas caem abaixo do threshold — antes que virem bugs não testados.
+
+**Início de cada ciclo:**
+```bash
+# Presença
+cat > kb/presence/coverage.json << EOF
+{"worker":"coverage","last_cycle":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","sleep_interval":3600,"status":"idle"}
+EOF
+
+# Inbox
+ls kb/inbox/coverage/*.json 2>/dev/null | sort | while read msg; do cat "$msg"; rm "$msg"; done
+```
+
+**Por ciclo — spawne subagente de cobertura:**
+```
+Meça a cobertura de testes do repo e identifique gaps críticos.
+
+1. Rode o comando de cobertura do projeto:
+   npm test -- --coverage | pytest --cov | go test ./... -cover | cargo tarpaulin
+   (identifique o comando correto no package.json/Makefile/README)
+
+2. Parse o relatório de cobertura e extraia por módulo/arquivo:
+   - Cobertura de linhas (%)
+   - Cobertura de branches (%)
+   - Funções cobertas vs total
+
+3. Classifique por criticidade:
+   - CRÍTICO: módulos de auth, pagamento, dados do usuário com < 80% cobertura
+   - ALTO: módulos de negócio core com < 60% cobertura
+   - MÉDIO: módulos secundários com < 40% cobertura
+   - IGNORAR: arquivos de config, migrations, tipos, mocks
+
+4. Retorne:
+   {
+     "total": "XX%",
+     "criticos": [{ "modulo": "...", "cobertura": "XX%", "threshold": "80%", "funcoes_sem_teste": N }],
+     "altos": [...],
+     "tendencia": "subindo|estavel|caindo"
+   }
+```
+
+**Para cada módulo abaixo do threshold — cheque duplicata antes de criar:**
+```bash
+gh issue list --state open --search "coverage: <módulo>" --json number,title
+```
+
+**Crie issue se não existir:**
+```bash
+gh issue create \
+  --title "coverage: <módulo> em <XX%> (threshold: <YY%>)" \
+  --body "## Cobertura insuficiente
+
+Módulo: \`<caminho>\`
+Cobertura atual: **<XX%>**
+Threshold esperado: **<YY%>**
+Funções sem teste: <N>
+
+### Funções não cobertas
+\`\`\`
+<lista das principais funções>
+\`\`\`
+
+### Impacto
+<por que este módulo é crítico>
+" \
+  --label "status:needs-scope,area:qa"
+```
+
+**Escreva signal se cobertura está caindo por 2+ ciclos consecutivos:**
+```bash
+# kb/signals/coverage-queda-<modulo>.md
+# frequency++ a cada ciclo que confirma queda
+```
+
+**LOG ao final do ciclo:**
+```
+## <data> · worker:coverage · ciclo de cobertura · #qa
+O que: total <XX%>, <N> módulos abaixo do threshold, abri issues #X #Y
+Refs: #issue-X
+```
+
+**Sleep:** 3600s (1 vez por hora). Se cobertura estável por 3 ciclos: backoff para 7200s.
+
+---
+
+## DEBT
+
+O cat arquiteto. Mede a saúde estrutural do código — não bugs, não testes,
+mas a dificuldade de entender e modificar o que existe.
+
+**Início de cada ciclo:**
+```bash
+# Presença
+cat > kb/presence/debt.json << EOF
+{"worker":"debt","last_cycle":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","sleep_interval":86400,"status":"idle"}
+EOF
+
+# Inbox
+ls kb/inbox/debt/*.json 2>/dev/null | sort | while read msg; do cat "$msg"; rm "$msg"; done
+```
+
+**Por ciclo, spawne subagentes em paralelo:**
+
+**Subagente — complexidade:**
+```
+Meça complexidade ciclomática e estrutural do codebase.
+
+1. Encontre funções/métodos com mais de 10 branches (if/else/switch/try/catch)
+2. Encontre arquivos com mais de 300 linhas (exceto gerados, migrations, tipos)
+3. Encontre funções com mais de 5 parâmetros
+4. Encontre classes/módulos com mais de 10 responsabilidades (god objects)
+
+Para cada achado, estime o esforço de refatoração: baixo | médio | alto
+
+Retorne: [{ arquivo: "...", funcao: "...", tipo: "complexidade|tamanho|parametros|god-object", metrica: N, esforco: "baixo|médio|alto" }]
+```
+
+**Subagente — duplicação:**
+```
+Encontre código duplicado ou quase-duplicado no codebase.
+
+1. Blocos de código com mais de 15 linhas repetidos em 2+ arquivos
+2. Funções com lógica idêntica mas nomes diferentes
+3. Constantes/configs duplicadas em múltiplos arquivos
+
+Ignore: boilerplate gerado, migrations, arquivos de teste.
+
+Retorne: [{ arquivos: ["...", "..."], tipo: "bloco|funcao|constante", linhas: N, sugestao: "extrair para <onde>" }]
+```
+
+**Para cada achado — cheque KB e issues abertas:**
+```bash
+grep -rl "<módulo>" kb/signals/ 2>/dev/null
+gh issue list --state open --search "debt: <módulo>" --json number,title
+```
+
+**Crie issue agrupada por módulo (não por função individual):**
+```bash
+gh issue create \
+  --title "debt: <módulo> — <tipo de problema>" \
+  --body "## Dívida técnica detectada
+
+Módulo: \`<caminho>\`
+Tipo: complexidade | duplicação | god-object | tamanho
+
+### Achados
+| Arquivo | Métrica | Esforço |
+|---------|---------|---------|
+| \`<path>\` | <valor> | baixo/médio/alto |
+
+### Por que refatorar
+<impacto na manutenibilidade>
+
+### Sugestão de abordagem
+<extração, decomposição, etc.>
+" \
+  --label "status:needs-scope,area:backend"
+```
+
+**Signal para padrões recorrentes de dívida na mesma área:**
+```bash
+# kb/signals/debt-<area>-<tipo>.md — se mesmo módulo aparece em 2+ ciclos
+```
+
+**LOG ao final do ciclo:**
+```
+## <data> · worker:debt · análise de dívida · #discovery
+O que: <N> achados de complexidade, <M> de duplicação — abri issues #X #Y
+Refs: #issue-X
+```
+
+**Nunca:** criar issue para nitpick de estilo, nomes de variáveis, formatação.
+**Sleep:** 86400s (1 vez por dia).
+
+---
+
+## DOCS
+
+O cat escriba. Monitora a saúde da documentação — README desatualizado,
+exports públicos sem docstring, CHANGELOG sem entrada, docs que contradizem
+o código atual.
+
+**Início de cada ciclo:**
+```bash
+# Presença
+cat > kb/presence/docs.json << EOF
+{"worker":"docs","last_cycle":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","sleep_interval":43200,"status":"idle"}
+EOF
+
+# Inbox
+ls kb/inbox/docs/*.json 2>/dev/null | sort | while read msg; do cat "$msg"; rm "$msg"; done
+```
+
+**Por ciclo, spawne subagentes em paralelo:**
+
+**Subagente — gaps de documentação no código:**
+```
+Encontre funções e módulos públicos sem documentação adequada.
+
+1. Exports públicos sem JSDoc/docstring/comentário de propósito:
+   - Funções exportadas sem /** ... */ (JS/TS)
+   - Classes públicas sem docstring (Python)
+   - Handlers de API sem descrição de parâmetros e retorno
+
+2. Foque em: endpoints de API, funções utilitárias exportadas, hooks públicos, serviços
+
+3. Ignore: implementações internas, getters/setters triviais, arquivos de tipos puros
+
+Retorne: [{ arquivo: "...", funcao: "...", tipo: "api-endpoint|util|hook|service", motivo: "sem-doc|doc-vaga" }]
+```
+
+**Subagente — documentação de repo:**
+```
+Avalie a saúde da documentação de repositório.
+
+1. README.md existe e está atualizado?
+   - Tem instruções de setup que funcionam? (teste o comando principal)
+   - Menciona features que não existem mais?
+   - Falta mencionar features novas (compare com PRs mergeadas recentes)?
+
+2. CHANGELOG.md existe?
+   - Última entrada é recente (< 30 dias ou < último release)?
+
+3. Documentação de API (se aplicável):
+   - Existe? (swagger, openapi, postman collection)
+   - Está sincronizada com as rotas existentes no código?
+
+4. Arquivos de configuração documentados?
+   - .env.example existe e está atualizado?
+   - Variáveis de ambiente novas têm entrada no .env.example?
+
+Retorne:
+{
+  "readme": { "status": "ok|desatualizado|faltando", "problemas": [...] },
+  "changelog": { "status": "ok|desatualizado|faltando" },
+  "api_docs": { "status": "ok|desatualizado|faltando|nao_aplicavel" },
+  "env_example": { "status": "ok|desatualizado|faltando", "vars_faltando": [...] }
+}
+```
+
+**Para cada gap crítico — crie issue:**
+```bash
+gh issue create \
+  --title "docs: <tipo de gap> em <módulo/arquivo>" \
+  --body "## Documentação faltando ou desatualizada
+
+Arquivo: \`<path>\`
+Tipo: sem-docstring | readme-desatualizado | changelog-vazio | env-desatualizado
+
+### Problema
+<o que está faltando ou errado>
+
+### O que deveria ter
+<o que a documentação deveria cobrir>
+" \
+  --label "status:needs-scope,area:docs"
+```
+
+**Nunca:** criar issue para comentários triviais, nomes de variáveis, TODOs  
+(isso é território do `scout`).
+
+**LOG ao final do ciclo:**
+```
+## <data> · worker:docs · auditoria de docs · #discovery
+O que: README ok | <N> exports sem doc | CHANGELOG desatualizado — abri issues #X
+Refs: #issue-X
+```
+
+**Sleep:** 43200s (2 vezes por dia é suficiente).

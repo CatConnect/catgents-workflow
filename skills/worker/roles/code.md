@@ -9,6 +9,17 @@ Workers que coordenam via GitHub labels para implementar, testar e mergear.
 O cat classificador. Pega issues que chegaram sem contexto e transforma em
 trabalho que os outros cats conseguem pegar sem perguntar nada.
 
+**Início de cada ciclo:**
+```bash
+# Presença
+cat > kb/presence/triage.json << EOF
+{"worker":"triage","last_cycle":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","sleep_interval":120,"status":"idle"}
+EOF
+
+# Inbox
+ls kb/inbox/triage/*.json 2>/dev/null | sort | while read msg; do cat "$msg"; rm "$msg"; done
+```
+
 **Filtro:** issues abertas sem label de área OU sem label de status.
 ```bash
 gh issue list --state open --limit 50 --json number,title,labels,body,comments
@@ -77,6 +88,17 @@ e mencione o signal no comentário de triage.
 O cat caçador local. Pega issues prontas, implementa no próprio ambiente,
 abre PR. Contexto limpo: o trabalho pesado vai pro subagente.
 
+**Início de cada ciclo:**
+```bash
+# Presença
+cat > kb/presence/dev.json << EOF
+{"worker":"dev","last_cycle":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","sleep_interval":60,"status":"idle"}
+EOF
+
+# Inbox
+ls kb/inbox/dev/*.json 2>/dev/null | sort | while read msg; do cat "$msg"; rm "$msg"; done
+```
+
 **Filtro:**
 ```bash
 gh issue list --state open \
@@ -134,6 +156,17 @@ Testes: <resultado>
 O cat delegador. Em vez de implementar localmente, atribui issues ao Jules
 (AI agent do Google) que trabalha de forma assíncrona no cloud. Monitora PRs
 abertas pelo Jules e orquestra o fluxo de review.
+
+**Início de cada ciclo:**
+```bash
+# Presença
+cat > kb/presence/dev-jules.json << EOF
+{"worker":"dev-jules","last_cycle":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","sleep_interval":270,"status":"idle"}
+EOF
+
+# Inbox
+ls kb/inbox/dev-jules/*.json 2>/dev/null | sort | while read msg; do cat "$msg"; rm "$msg"; done
+```
 
 **Filtro de issues prontas para Jules:**
 ```bash
@@ -214,6 +247,17 @@ Refs: #issue-N, #pr-M
 O cat inspetor. Não escreveu o código — portanto pode julgá-lo com olhos
 frescos. Usa subagente **independente** que dirige o app real para verificar
 se a feature funciona de verdade, não só se os testes passam.
+
+**Início de cada ciclo:**
+```bash
+# Presença
+cat > kb/presence/qa.json << EOF
+{"worker":"qa","last_cycle":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","sleep_interval":60,"status":"idle"}
+EOF
+
+# Inbox
+ls kb/inbox/qa/*.json 2>/dev/null | sort | while read msg; do cat "$msg"; rm "$msg"; done
+```
 
 **Filtro:**
 ```bash
@@ -298,10 +342,39 @@ Atual: <Y>
 O alpha cat. Última linha de defesa antes do merge. Só age em PRs com QA
 aprovado e checklist completo.
 
+**Início de cada ciclo:**
+```bash
+# Presença
+cat > kb/presence/reviewer.json << EOF
+{"worker":"reviewer","last_cycle":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","sleep_interval":90,"status":"idle"}
+EOF
+
+# Inbox — processe mensagens de outros workers
+ls kb/inbox/reviewer/*.json 2>/dev/null | sort | while read msg; do
+  cat "$msg"
+  rm "$msg"
+done
+```
+
+**Verificar presença do UX antes de mergear PR com UI:**
+```bash
+# Leia o presence do ux
+UX_PRESENCE=$(cat kb/presence/ui-ux.json 2>/dev/null)
+
+# Se o arquivo existe, calcule se está online:
+# online = last_cycle recente (< 2 × sleep_interval do ux)
+# Se kb/presence/ui-ux.json não existe → ux nunca rodou → offline
+```
+
+Regra:
+- PR toca UI (`*.tsx`, `*.css`, `components/`, `pages/`, `app/`) E `ux` **online** E sem `status:ux-approved` → aguarde, não mergeia
+- PR toca UI E `ux` **offline** → mergeia, comente: `ux offline — merged sem revisão UX`
+- PR não toca UI → mergeia normalmente
+
 **Filtro:**
 ```bash
 gh pr list --state open --label "status:qa-approved" \
-  --json number,title,body,labels,mergeable,statusCheckRollup
+  --json number,title,body,labels,mergeable,statusCheckRollup,files
 ```
 
 **Checklist antes de mergear (todas devem passar):**
@@ -310,6 +383,7 @@ gh pr list --state open --label "status:qa-approved" \
 - [ ] Escopo bate com issue vinculada
 - [ ] Nenhuma PR concorrente toca os mesmos arquivos
 - [ ] Sem alteração sensível não explicada (auth, env, migration)
+- [ ] Se UI: `ux` offline OU tem `status:ux-approved` (via label ou inbox)
 
 **Se tudo ok:**
 ```bash
