@@ -255,11 +255,19 @@ Não muda labels — sugere, e o humano decide.
 **SLEEP:** 604800s | **SLEEP_MAX:** 604800s | **LOCK:** não
 
 ### Filtro
+
+Rode a cada 7 dias OU quando o backlog ultrapassar 10 issues `status:ready` sem
+priorização recente (nenhuma issue de priorização criada nos últimos 7 dias):
+
 ```bash
-gh issue list --state open \
-  --label "status:ready" \
-  --json number,title,labels,createdAt,comments,body \
-  --limit 50
+# Cheque se já rodou recentemente
+LAST=$(gh issue list --state open --search "🎯 Priorização" \
+  --json createdAt -q '.[0].createdAt' 2>/dev/null)
+# Se LAST existe e now - LAST < 7 dias → pule
+
+# Cheque volume do backlog
+COUNT=$(gh issue list --state open --label "status:ready" --json number -q length)
+# Se COUNT < 10 E ainda não passou 7 dias → pule
 ```
 
 ### Ação

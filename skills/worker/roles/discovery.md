@@ -42,15 +42,6 @@ Encontre funções com alta complexidade e sem cobertura de teste.
 4. Retorne: [{ arquivo: "...", funcao: "...", motivo: "sem-teste|muito-complexa" }]
 ```
 
-**Subagente — código sem documentação:**
-```
-Encontre funções e módulos públicos sem documentação.
-1. Exports públicos sem JSDoc, docstring ou comentário de propósito
-2. Foco em: APIs, funções de negócio, módulos principais
-3. Ignore: funções triviais, getters/setters simples
-4. Retorne: [{ arquivo: "...", funcao: "...", tipo: "..." }]
-```
-
 ### Ação
 
 Para cada achado relevante:
@@ -357,16 +348,24 @@ Retorne: [{ arquivo: "...", funcao: "...", tipo: "api|util|hook|service", motivo
 **Subagente — documentação de repo:**
 ```
 Avalie a saúde da documentação de repositório.
-1. README.md: existe? setup funciona? menciona features removidas? falta features novas?
-2. CHANGELOG.md: existe? última entrada é recente?
+
+1. README.md: existe? setup funciona? menciona features/rotas removidas? falta features novas?
+2. CHANGELOG.md: existe? última entrada é recente (< 30 dias)?
 3. API docs (swagger/openapi): existe? sincronizada com rotas atuais?
-4. .env.example: existe? variáveis novas têm entrada?
+4. .env.example: existe? variáveis novas têm entrada? variáveis removidas ainda aparecem?
+5. Docs avulsas: liste todos os *.md do repo (exceto node_modules, .git)
+   - Arquivos que mencionam rotas, funções ou módulos que não existem mais no código
+   - Arquivos sem link de nenhum outro documento (documentação órfã)
+   - Guias de setup/deploy com comandos que não existem mais (scripts, CLI flags)
+6. CONTRIBUTING.md / docs/: fluxo de contribuição descreve o processo atual?
+
 Retorne:
 {
   "readme": { "status": "ok|desatualizado|faltando", "problemas": [...] },
   "changelog": { "status": "ok|desatualizado|faltando" },
   "api_docs": { "status": "ok|desatualizado|faltando|nao_aplicavel" },
-  "env_example": { "status": "ok|desatualizado|faltando", "vars_faltando": [...] }
+  "env_example": { "status": "ok|desatualizado|faltando", "vars_faltando": [...] },
+  "docs_avulsas": [{ "arquivo": "...", "problema": "orfao|desatualizado|referencia-morta" }]
 }
 ```
 

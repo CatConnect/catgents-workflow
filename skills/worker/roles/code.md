@@ -179,6 +179,14 @@ ciclo até o QA poder testar.
 
 **SLEEP:** 270s | **SLEEP_MAX:** 810s | **LOCK:** sim (ao atribuir issues)
 
+**Pré-requisito (verificar no init, antes do loop):**
+```bash
+# Jules precisa estar configurado no repo
+gh api repos/:owner/:repo/installations 2>/dev/null | grep -q "jules" || \
+  { echo "[worker:dev-jules] ❌ Jules não está instalado neste repo.
+Instale em: https://jules.google.com e adicione ao repo."; exit 1; }
+```
+
 ### Filtro
 
 **Issues prontas para Jules:**

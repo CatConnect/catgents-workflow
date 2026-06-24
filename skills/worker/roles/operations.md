@@ -154,14 +154,23 @@ o trabalho e publica após aprovação humana.
 **Modo normal — verificar threshold:**
 ```bash
 # Última tag
-gh release list --limit 1 --json tagName,publishedAt
+LAST_RELEASE=$(gh release list --limit 1 --json tagName,publishedAt)
+LAST_DATE=$(echo $LAST_RELEASE | jq -r '.[0].publishedAt')
 
 # PRs mergeadas desde então
-gh pr list --state merged \
-  --search "merged:>$(gh release list --limit 1 --json publishedAt -q '.[0].publishedAt')" \
-  --json number | jq length
+PR_COUNT=$(gh pr list --state merged \
+  --search "merged:>$LAST_DATE" \
+  --json number | jq length)
+
+# Dias desde o último release
+DAYS_SINCE=$(( ( $(date +%s) - $(date -d "$LAST_DATE" +%s) ) / 86400 ))
 ```
-Se < 5 PRs → dorme (modo normal, 3600s).
+
+Dispara se **qualquer** condição for verdadeira:
+- `PR_COUNT >= 5` — threshold de PRs atingido
+- `DAYS_SINCE >= 14` — 2 semanas sem release (mesmo com poucas PRs)
+
+Se nenhuma → dorme (modo normal, 3600s).
 
 **Modo monitor — PR de release já criada:**
 ```bash
