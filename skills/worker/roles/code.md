@@ -208,36 +208,56 @@ gh pr list --state open --json number,title,body,labels,headRefName
 ```
 Identifique PRs cujo body menciona `Closes #<N>` de issues com label `jules`.
 
-**Ao Jules abrir PR:** spawne subagente reviewer:
+**Ao Jules abrir PR:** spawne subagente de revisão de código (não é QA completo):
 ```
-Você é um revisor de código independente. NÃO edite código.
+Você é um revisor de código independente. NÃO edite código. NÃO pergunte.
 
 PR #<N>: <título>
 Issue vinculada: #<M> — <título>
 Escopo esperado (do comentário de triage/pm): <copie>
 
+Sua tarefa é revisão de código — não QA comportamental:
 1. Leia o diff: gh pr diff <N>
-2. Verifique se o escopo foi implementado corretamente
-3. Rode os testes: <comando>
-4. Retorne: { veredicto: "aprovado|ajustes", problemas: [...] }
+2. O escopo da issue foi implementado? Algo além do escopo foi tocado?
+3. Rode os testes automatizados: <comando>
+4. O código tem problemas óbvios: lógica errada, segurança, performance crítica?
+
+NÃO faça: subir o app, testar comportamento visual, verificar fluxos de usuário.
+Isso é responsabilidade do worker:qa quando estiver rodando.
+
+Retorne: { veredicto: "aprovado|ajustes", testes: "ok|falhou", problemas: [...] }
 ```
 
-**Se aprovado:**
-- Aplique `status:qa-approved` na PR
-- Remova `jules` da issue, aplique `status:needs-review`
+**Se aprovado pela revisão de código:**
+- Aplique `status:needs-review` na PR (sinaliza para `qa` e `reviewer`)
+- Remova `jules` da issue
+- Comente na PR:
+```
+## 🤖 Revisão de código — dev-jules
+
+Escopo: implementado corretamente
+Testes: <resultado>
+
+Aguardando QA comportamental (worker:qa) antes do merge.
+```
 
 **Se precisa ajustes:**
 - `gh pr review <N> --request-changes --body "<problemas>"`
-- Jules vai corrigir e atualizar a PR
+- Jules vai corrigir e atualizar a PR — aguarde próximo ciclo
 
-**LOG após cada merge/ajuste do Jules:**
+**Responsabilidades claras:**
+- `dev-jules` → delega + faz revisão de código (diff + testes automatizados)
+- `qa` → faz QA comportamental (dirige o app, testa fluxos reais) — roda independente
+- `reviewer` → mergeia após `status:qa-approved`
+
+**LOG após revisão:**
 ```
-## <data> · worker:dev-jules · PR mergeada · #code
-O que: Jules implementou #issue-N, PR #M aprovada e marcada para merge
+## <data> · worker:dev-jules · revisão de código · #code
+O que: Jules abriu PR #M para issue #N — revisão ok, aguardando qa
 Refs: #issue-N, #pr-M
 ```
 
-**Nunca:** fazer merge (deixa pro `reviewer`), pegar `risk:high`.
+**Nunca:** fazer merge (deixa pro `reviewer`), pegar `risk:high`, fazer QA comportamental.
 **Sleep:** 270s (Jules é lento — não adianta checar a cada 60s).
 
 ---

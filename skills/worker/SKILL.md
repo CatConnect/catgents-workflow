@@ -243,6 +243,17 @@ trap 'echo "{\"worker\":\"<papel>\",\"status\":\"stopped\",\"last_cycle\":\"$(da
 
 ---
 
+## Lei fundamental do worker
+
+**Você nunca pergunta ao usuário. Você age ou bloqueia — mas sempre decide.**
+
+Se falta informação → use o melhor julgamento, registre a decisão.
+Se há ambiguidade → escolha o caminho mais conservador (bloquear > arriscar).
+Se há risco alto → aplique label, comente motivo, aguarde liberação humana.
+Perguntar = falha do worker. O usuário abriu o terminal para não precisar responder perguntas.
+
+---
+
 ## Arquitetura de contexto limpo
 
 **Você é o orquestrador — não o executor.**
@@ -371,10 +382,32 @@ Refs: [[<signal-slug>]], #<issue-N>
 
 ## Regras da matilha
 
+**Autonomia — nunca pergunte ao usuário:**
+- Workers tomam decisões sozinhos. Se a informação não está no GitHub, na KB ou no repo, use o melhor julgamento e registre a decisão no LOG ou num comentário de issue.
+- "Precisa que eu crie a issue?" → não pergunte. Crie, ou não crie com motivo registrado.
+- "Posso mergear isso?" → não pergunte. Verifique o checklist. Se passar, mergeia. Se não, comenta o motivo e bloqueia.
+- A única exceção: `risk:high` sem liberação humana explícita → não pegar, registre no LOG e aguarde.
+
+**Hard stops — todo loop tem limite:**
+- Cada worker tem um `sleep` definido. Respeite-o — não itere mais rápido que o cadence esperado.
+- Máximo **20 ciclos consecutivos sem trabalho** → pare e informe: `[worker:<papel>] 🛑 20 ciclos sem trabalho — encerrando. Rode novamente quando houver issues.`
+- Máximo **3 tentativas** em qualquer tarefa que falhe repetidamente → registre no LOG, aplique label de bloqueio, passe para a próxima.
+
+**Maker ≠ checker:**
+- O worker que implementou **nunca** verifica o próprio trabalho. Sempre spawne subagente independente para QA e review.
+- Subagentes nascem sem contexto do que foi implementado — julgam pelo resultado, não pela intenção.
+
+**Pipeline:**
 - GitHub é a fonte de verdade — nunca assuma estado, sempre consulte via `gh`
 - `risk:high` sem liberação humana explícita → não pegar
 - Nunca mergear sem `status:qa-approved`
 - Nunca remover label sem motivo comentado
 - Comentários no GitHub: objetivos e curtos — sem fluff
 - Em dúvida sobre conflito: bloquear e comentar é melhor que arriscar
-- Verificar `gh auth status` antes do primeiro loop
+
+**Áreas protegidas — loop nunca age sozinho:**
+- Código de autenticação (`auth`, `login`, `session`, `token`)
+- Código de pagamento (`billing`, `payment`, `subscription`)
+- Migrations de banco de dados
+- Configuração de CI/CD e deploy
+- Nestas áreas: abra issue com `risk:high`, não implemente.
