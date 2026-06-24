@@ -71,8 +71,13 @@ impede duplicatas e faz o sistema compor ao longo do tempo.
 Verifique se a KB existe no repo. Se não existir, crie:
 
 ```bash
-# Estrutura da KB (na raiz do repo alvo)
-mkdir -p kb/signals kb/docs kb/presence kb/inbox/<seu-papel>
+# Estrutura completa da KB (na raiz do repo alvo)
+mkdir -p kb/signals kb/docs kb/presence
+mkdir -p kb/inbox/triage kb/inbox/dev kb/inbox/dev-jules kb/inbox/qa kb/inbox/reviewer
+mkdir -p kb/inbox/scout kb/inbox/qa-monitor kb/inbox/security kb/inbox/deps
+mkdir -p kb/inbox/coverage kb/inbox/debt kb/inbox/docs
+mkdir -p kb/inbox/pm kb/inbox/ui-ux kb/inbox/prioritizer
+mkdir -p kb/inbox/stale kb/inbox/release
 ```
 
 Copie os templates se ainda não existirem:
