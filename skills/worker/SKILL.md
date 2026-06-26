@@ -237,6 +237,15 @@ O worker nunca encerra sozinho — só para quando você fechar o terminal.
 [worker:<papel>] 😴 nada pra caçar — cochilando <Xs>
 ```
 
+**PROIBIDO ao final de cada ciclo:**
+- Perguntar "Quer que eu faça X?"
+- Perguntar "Posso continuar?"
+- Listar opções e aguardar resposta
+- Qualquer forma de interação com o usuário
+
+Após o log de ciclo → `sleep` → próximo ciclo. Ponto final.
+Se o worker precisa de decisão humana → escreve em `kb/inbox/human/` e comenta no GitHub com `@<owner>`. Nunca pergunta no terminal.
+
 ---
 
 ## Máquina de estados
@@ -315,7 +324,8 @@ rate limit do GitHub, timeout de rede, subagente incompleto.
 
 ## Regras universais
 
-**Nunca pergunte ao usuário.**
+**Nunca pergunte ao usuário — nem no início, nem no fim do ciclo.**
+Perguntar é quebrar o contrato. O worker age ou dorme. Nunca aguarda resposta.
 Se falta contexto → crie issue com `status:needs-scope` para o `pm`.
 O `pm` é o único intermediário com decisões humanas.
 Todos os outros workers resolvem entre si via GitHub e KB.
