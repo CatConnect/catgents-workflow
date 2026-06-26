@@ -105,6 +105,12 @@ Filtre PRs abertas por você (author = @me ou branch com prefixo da sua área).
 ### Ação — implementar issue
 
 **Lock pattern:**
+-1. **Confirmar issue aberta:**
+   ```bash
+   gh issue view <N> --json state | jq -r '.state'
+   ```
+   Se != `"OPEN"` → pule, escolha outra issue.
+
 0. **Pré-conflito:** estime os arquivos que serão tocados (leia o escopo do comentário de triage/pm).
    Compare com PRs abertas:
    ```bash
@@ -130,12 +136,20 @@ Escopo (do comentário de triage/pm): <copie>
 Repo: <url> | Stack: <linguagem/framework>
 Convenções: <leia CLAUDE.md ou README>
 
+0. VERIFICAR ISSUE: gh issue view <N> --json state,title
+   Se state != "OPEN" → retorne { erro: "issue fechada ou inexistente", acao: "nenhuma" } imediatamente.
 1. Crie branch: <area>/<N>-<slug>
 2. Implemente apenas o escopo — nada além
 3. Rode os testes: <comando>
 4. Abra PR: gh pr create --title "<título>" --body "Closes #<N>\n\n<resumo>"
 5. Retorne: { pr: N, branch: "...", testes: "ok|falhou", observacoes: "..." }
 ```
+
+**Se subagente retornar erro de issue fechada:**
+```bash
+gh issue edit <N> --remove-label "status:in-progress" --remove-assignee @me
+```
+Não crie PR, não faça commit. Passe para próxima issue.
 
 **Após resultado:**
 - Remova `status:in-progress`, aplique `status:needs-review` na PR
