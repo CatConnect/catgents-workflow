@@ -105,6 +105,16 @@ Filtre PRs abertas por você (author = @me ou branch com prefixo da sua área).
 ### Ação — implementar issue
 
 **Lock pattern:**
+0. **Pré-conflito:** estime os arquivos que serão tocados (leia o escopo do comentário de triage/pm).
+   Compare com PRs abertas:
+   ```bash
+   gh pr list --state open --json number,headRefName,files
+   ```
+   Se houver overlap de arquivos → não pegue a issue, aplique `risk:conflict`, comente:
+   ```bash
+   gh issue edit <N> --add-label "risk:conflict"
+   gh issue comment <N> --body "## 🚧 Conflito detectado\nArquivos sobrepostos com PR #<M>: <lista>\nAguardar merge da PR antes de prosseguir."
+   ```
 1. `gh issue comment <N> --body "claiming #<N> — worker:dev — $(date -u +%Y-%m-%dT%H:%M:%SZ)"`
 2. `gh issue edit <N> --add-assignee @me --add-label status:in-progress --remove-label status:ready`
 3. Aguarde 10s
@@ -339,6 +349,17 @@ Retorne:
 }
 ```
 
+**Antes de aprovar — verifique mergeabilidade:**
+```bash
+gh pr view <N> --json mergeable,statusCheckRollup
+```
+Se `mergeable = CONFLICTING`:
+```bash
+gh pr edit <N> --remove-label "status:needs-review" --add-label "status:qa-blocked"
+gh pr comment <N> --body "## ⚠️ Conflito de merge\nA branch tem conflito com main. Faça rebase e resolva os conflitos antes da revisão de QA."
+```
+Não prossiga com QA — o dev precisa resolver o conflito primeiro.
+
 **Se aprovado:**
 ```bash
 gh pr edit <N> --remove-label "status:needs-review" --add-label "status:qa-approved"
@@ -408,7 +429,27 @@ Issues fechadas: #<N>
 Resumo: <1-2 linhas>"
 ```
 
-**Se não ok:** remova `status:qa-approved`, aplique label correto, comente motivo.
+**Se não ok — roteie pelo motivo:**
+
+- **CI falhou** (`gh pr checks <N>` com status failure/error):
+  ```bash
+  gh pr edit <N> --remove-label "status:qa-approved" --add-label "status:qa-blocked"
+  gh pr comment <N> --body "## ❌ CI falhou\n$(gh pr checks <N>)\nCorrija e faça push na mesma branch."
+  ```
+
+- **Conflito de merge** (`mergeable = CONFLICTING`):
+  ```bash
+  gh pr edit <N> --remove-label "status:qa-approved" --add-label "status:qa-blocked"
+  gh pr comment <N> --body "## ⚠️ Conflito de merge\nA branch tem conflito com main. Faça rebase e resolva os conflitos."
+  ```
+
+- **Outro motivo** (escopo errado, alteração sensível não explicada):
+  ```bash
+  gh pr edit <N> --remove-label "status:qa-approved" --add-label "status:needs-review"
+  gh pr comment <N> --body "## 🔍 Revisão necessária\n<motivo detalhado>"
+  ```
+
+Em todos os casos o worker:dev pega no próximo ciclo via filtro `status:qa-blocked`.
 
 ### Ação — desbloquear conflitos após merge
 
