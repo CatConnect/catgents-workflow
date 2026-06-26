@@ -117,8 +117,8 @@ gh issue comment <N> --body "## 😴 Issue inativa
 Sem atividade há 30+ dias. Se ainda é relevante, atualize com contexto.
 Será fechada em 7 dias automaticamente.
 *worker:stale*"
-gh issue edit <N> --add-label "status:blocked"
 ```
+Não adicione nenhum label — `status:blocked` tem semântica de conflito/risco e confunde outros workers.
 
 **Segunda passagem — fechar (37d+ sem atividade):**
 ```bash

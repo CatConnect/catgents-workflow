@@ -94,13 +94,14 @@ Exclua: `status:blocked`, `status:in-progress`, `risk:conflict`, `risk:high`.
 ```bash
 gh pr list --state open \
   --label "status:qa-blocked" \
+  --author @me \
   --json number,title,body,headRefName,author
 # também:
 gh pr list --state open \
   --label "status:ux-blocked" \
+  --author @me \
   --json number,title,body,headRefName,author
 ```
-Filtre PRs abertas por você (author = @me ou branch com prefixo da sua área).
 
 ### Ação — implementar issue
 
@@ -459,8 +460,8 @@ Resumo: <1-2 linhas>"
 
 - **Outro motivo** (escopo errado, alteração sensível não explicada):
   ```bash
-  gh pr edit <N> --remove-label "status:qa-approved" --add-label "status:needs-review"
-  gh pr comment <N> --body "## 🔍 Revisão necessária\n<motivo detalhado>"
+  gh pr edit <N> --remove-label "status:qa-approved" --add-label "status:qa-blocked"
+  gh pr comment <N> --body "## 🔍 Bloqueado pelo reviewer\n<motivo detalhado>\nCorreção necessária antes de novo ciclo de QA."
   ```
 
 Em todos os casos o worker:dev pega no próximo ciclo via filtro `status:qa-blocked`.

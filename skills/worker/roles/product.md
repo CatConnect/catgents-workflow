@@ -20,7 +20,12 @@ gh issue list --state open \
   --label "status:needs-scope" \
   --json number,title,body,labels,comments
 ```
-Também processa issues abertas sem nenhuma label (recém criadas pelo usuário).
+Também processa issues abertas **sem nenhuma label**, mas apenas se não houver comentário de "claiming" do triage nos últimos 5 minutos:
+```bash
+# Cheque o último comentário da issue antes de processar
+gh issue view <N> --json comments -q '.comments[-1].body' | grep -q "worker:triage" && continue
+```
+Isso evita que pm e triage processem a mesma issue sem label ao mesmo tempo.
 
 ### Ação
 
