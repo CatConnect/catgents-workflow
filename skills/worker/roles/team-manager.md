@@ -20,9 +20,9 @@ echo "[worker:team-manager] lendo estado de $REPO — usuário: $GH_USER"
 UNCLASSIFIED=$(gh issue list --state open --json number,title,labels \
   | jq '[.[] | select(.labels | map(.name) | any(startswith("status:")) | not)]')
 
-# Issues needs-scope sem spec (aguardando definição)
+# Issues needs-scope (aguardando spec)
 NEEDS_SCOPE=$(gh issue list --state open --label "status:needs-scope" \
-  --json number,title,assignees,comments --limit 20)
+  --json number,title --limit 20)
 
 # Issues ready sem assignee (prontas, ninguém pegou)
 READY_UNASSIGNED=$(gh issue list --state open --label "status:ready" \
@@ -43,10 +43,9 @@ PRS_NEEDS_REVIEW=$(gh pr list --state open --label "status:qa-approved" \
   --json number,title,assignees \
   | jq '[.[] | select(.assignees | length == 0)]')
 
-# PRs qa-blocked sem assignee de dev para corrigir
+# PRs qa-blocked (todas — manager avalia cada uma)
 PRS_QA_BLOCKED=$(gh pr list --state open --label "status:qa-blocked" \
-  --json number,title,assignees,author \
-  | jq '[.[] | select(.assignees | length == 0)]')
+  --json number,title,assignees,author)
 
 echo "[worker:team-manager] não-classificadas: $(echo $UNCLASSIFIED | jq length)"
 echo "[worker:team-manager] needs-scope: $(echo $NEEDS_SCOPE | jq length)"
@@ -167,7 +166,7 @@ if [ "$DEV_LOAD" -lt 2 ]; then
     --add-label "status:in-progress" \
     --remove-label "status:ready"
   gh issue comment <N> \
-    --body "## 👷 Atribuído pelo team-manager\n\n@vhsmdev implementar conforme spec acima."
+    --body "## 👷 Atribuído pelo team-manager\n\n@$GH_USER implementar conforme spec acima."
   echo "[worker:team-manager] ✓ #<N> atribuída para dev"
 else
   echo "[worker:team-manager] dev já tem $DEV_LOAD issues — aguardando"
@@ -230,10 +229,16 @@ if [ -n "$QA_BLOCKED_AT" ] && [ -n "$LAST_COMMIT_AT" ] && [[ "$LAST_COMMIT_AT" >
   gh pr comment <N> --body "## 🔍 Reatribuído para QA pelo team-manager\n\nCorreção detectada após bloqueio. Nova revisão de QA iniciada."
   echo "[worker:team-manager] ✓ PR #<N> → correção detectada, reatribuído para QA"
 else
-  # Dev ainda não corrigiu — atribuir dev se sem assignee
-  gh pr edit <N> --add-assignee "$AUTHOR"
-  gh pr comment <N> --body "## 🔄 Retornado para correção pelo team-manager\n\n@$AUTHOR veja os comentários de QA acima e corrija."
-  echo "[worker:team-manager] ✓ PR #<N> → $AUTHOR para corrigir qa-blocked"
+  # Dev ainda não corrigiu — atribuir dev se sem assignee, evitar spam de comentário
+  ALREADY_NOTIFIED=$(gh pr view <N> --json comments \
+    -q '[.comments[] | select(.body | contains("Retornado para correção"))] | length')
+  if [ "$ALREADY_NOTIFIED" -eq 0 ]; then
+    gh pr edit <N> --add-assignee "$AUTHOR"
+    gh pr comment <N> --body "## 🔄 Retornado para correção pelo team-manager\n\n@$AUTHOR veja os comentários de QA acima e corrija."
+    echo "[worker:team-manager] ✓ PR #<N> → $AUTHOR notificado para corrigir"
+  else
+    echo "[worker:team-manager] PR #<N> → aguardando correção de $AUTHOR (já notificado)"
+  fi
 fi
 ```
 
