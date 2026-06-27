@@ -8,6 +8,78 @@ Ele nunca implementa, nunca revisa código, nunca mergeia — só orquestra.
 
 ---
 
+## Inicialização — Normalizar labels do repo
+
+Execute **uma única vez** antes do loop. Garante que o repo usa exatamente
+o padrão de labels da skill — sem duplicatas, truncadas ou de outros sistemas.
+
+```bash
+echo "[worker:team-manager] normalizando labels do repo..."
+
+# Labels canônicas da skill (nome → cor)
+declare -A CANONICAL=(
+  ["area:backend"]="0075ca"   ["area:frontend"]="0075ca"  ["area:infra"]="0075ca"
+  ["area:db"]="0075ca"        ["area:docs"]="0075ca"      ["area:qa"]="0075ca"
+  ["status:needs-scope"]="e4e669"  ["status:ready"]="e4e669"
+  ["status:in-progress"]="e4e669"  ["status:blocked"]="e4e669"
+  ["status:needs-review"]="e4e669" ["status:qa-approved"]="e4e669"
+  ["status:qa-blocked"]="e4e669"
+  ["risk:low"]="d93f0b"   ["risk:high"]="d93f0b"    ["risk:conflict"]="d93f0b"
+  ["risk:migration"]="d93f0b" ["risk:auth"]="d93f0b"
+)
+
+# Garantir que todas as labels canônicas existem
+for LABEL in "${!CANONICAL[@]}"; do
+  COLOR="${CANONICAL[$LABEL]}"
+  EXISTS=$(gh label list --limit 200 --json name -q "[.[] | select(.name == \"$LABEL\")] | length")
+  if [ "$EXISTS" -eq 0 ]; then
+    gh label create "$LABEL" --color "$COLOR" --force
+    echo "[worker:team-manager] label criada: $LABEL"
+  fi
+done
+
+# Labels truncadas ou com typo → migrar issues e deletar
+# Padrão: qualquer label que começa com prefixo canônico mas não está na lista
+ALL_LABELS=$(gh label list --limit 200 --json name -q '.[].name')
+
+echo "$ALL_LABELS" | while read LABEL; do
+  # Verifica se é uma label canônica
+  IS_CANONICAL=false
+  for C in "${!CANONICAL[@]}"; do
+    [ "$LABEL" = "$C" ] && IS_CANONICAL=true && break
+  done
+  [ "$IS_CANONICAL" = true ] && continue
+
+  # Verifica se parece uma label truncada (começa com prefixo canônico)
+  for PREFIX in "area:" "status:" "risk:"; do
+    if [[ "$LABEL" == "$PREFIX"* ]]; then
+      # Tenta encontrar a canônica correspondente
+      BEST_MATCH=$(printf '%s\n' "${!CANONICAL[@]}" | grep "^$PREFIX" | while read C; do
+        # Verifica se a label truncada é prefixo da canônica
+        [[ "$C" == "$LABEL"* ]] && echo "$C"
+      done | head -1)
+
+      if [ -n "$BEST_MATCH" ]; then
+        echo "[worker:team-manager] migrando label truncada: '$LABEL' → '$BEST_MATCH'"
+        # Migra todas as issues com a label truncada para a canônica
+        gh issue list --label "$LABEL" --state all --json number -q '.[].number' | while read N; do
+          gh issue edit "$N" --add-label "$BEST_MATCH" --remove-label "$LABEL" 2>/dev/null || true
+        done
+        gh pr list --label "$LABEL" --state all --json number -q '.[].number' | while read N; do
+          gh pr edit "$N" --add-label "$BEST_MATCH" --remove-label "$LABEL" 2>/dev/null || true
+        done
+        gh label delete "$LABEL" --yes 2>/dev/null || true
+      fi
+      break
+    fi
+  done
+done
+
+echo "[worker:team-manager] labels normalizadas — ecossistema pronto"
+```
+
+---
+
 ## Fase 1 — BUSCAR
 
 ```bash
@@ -16,9 +88,26 @@ REPO=$(gh repo view --json nameWithOwner -q '.nameWithOwner')
 GH_USER=$(gh api user -q '.login')
 echo "[worker:team-manager] lendo estado de $REPO — usuário: $GH_USER"
 
-# Issues sem label de status (não classificadas)
+# Labels fora do ecossistema — ignoradas em todas as queries
+# Issues/PRs com essas labels não são tocadas por nenhum worker
+IGNORE_LABELS=("jules" "approved-for-jules" "needs-triage" "needs-breakdown" "needs-decomposition" "needs-investigation" "needs-spec" "wontfix" "invalid" "duplicate")
+
+# Função auxiliar: verifica se item tem label ignorada
+has_ignored_label() {
+  local LABELS_JSON="$1"
+  for IL in "${IGNORE_LABELS[@]}"; do
+    echo "$LABELS_JSON" | jq -e "[.[] | select(.name == \"$IL\")] | length > 0" > /dev/null 2>&1 && return 0
+  done
+  return 1
+}
+
+# Issues sem label de status (não classificadas) — excluindo labels fora do ecossistema
 UNCLASSIFIED=$(gh issue list --state open --json number,title,labels \
-  | jq '[.[] | select(.labels | map(.name) | any(startswith("status:")) | not)]')
+  | jq --argjson ignore '["jules","approved-for-jules","needs-triage","needs-breakdown","needs-decomposition","needs-investigation","needs-spec","wontfix","invalid","duplicate"]' \
+  '[.[] | select(
+    (.labels | map(.name) | any(startswith("status:")) | not) and
+    (.labels | map(.name) | any(. as $l | $ignore[] | . == $l) | not)
+  )]')
 
 # Issues needs-scope (aguardando spec)
 NEEDS_SCOPE=$(gh issue list --state open --label "status:needs-scope" \
