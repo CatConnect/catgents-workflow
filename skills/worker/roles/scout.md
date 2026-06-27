@@ -45,28 +45,10 @@ done
 echo "[worker:scout] varredura 1/5 — branches órfãs: concluída"
 ```
 
-### Varredura 2 — Issues in-progress com PR mergeada (não fecharam)
+### Varredura 2 — Issues estagnadas
 
 ```bash
-echo "[worker:scout] varredura 2/5 — issues presas"
-
-gh issue list --state open --label "status:in-progress" --json number,title | jq -r '.[].number' | while read N; do
-  MERGED=$(gh pr list --state merged \
-    --search "Closes #$N OR Fixes #$N OR Resolves #$N" \
-    --json number -q '.[0].number // empty' 2>/dev/null)
-  if [ -n "$MERGED" ]; then
-    gh issue close "$N" --comment "## ✅ Fechada pelo scout\n\nPR #$MERGED foi mergeada mas a issue não fechou automaticamente."
-    echo "[worker:scout] ✓ issue #$N fechada — PR #$MERGED já mergeada"
-  fi
-done
-
-echo "[worker:scout] varredura 2/5 — issues presas: concluída"
-```
-
-### Varredura 3 — Issues estagnadas
-
-```bash
-echo "[worker:scout] varredura 3/5 — issues estagnadas"
+echo "[worker:scout] varredura 2/4 — issues estagnadas"
 
 # Issues ready ou in-progress sem atividade há 37+ dias
 gh issue list --state open --json number,title,updatedAt,labels | \
@@ -74,20 +56,24 @@ gh issue list --state open --json number,title,updatedAt,labels | \
     (.labels | map(.name) | any(. == "status:ready" or . == "status:in-progress")) and
     ((now - (.updatedAt | fromdateiso8601)) > 37 * 86400)
   ) | .number' | while read N; do
-    EXISTING=$(gh issue list --state open --search "estagnada #$N" --json number -q '.[0].number // empty')
-    if [ -z "$EXISTING" ]; then
+    # Verifica se já existe comentário de estagnação na própria issue
+    ALREADY=$(gh issue view "$N" --json comments \
+      -q '[.comments[] | select(.body | contains("Alerta de estagnação"))] | length')
+    if [ "$ALREADY" -eq 0 ]; then
       gh issue comment "$N" --body "## ⏰ Alerta de estagnação — scout\n\nEsta issue está sem atividade há mais de 37 dias. O team-manager irá avaliar."
       echo "[worker:scout] ✓ #$N — alerta de estagnação enviado"
+    else
+      echo "[worker:scout] #$N — já alertada, pulando"
     fi
   done
 
-echo "[worker:scout] varredura 3/5 — issues estagnadas: concluída"
+echo "[worker:scout] varredura 2/4 — issues estagnadas: concluída"
 ```
 
-### Varredura 4 — Backlog de descoberta
+### Varredura 3 — Backlog de descoberta
 
 ```bash
-echo "[worker:scout] varredura 4/5 — backlog needs-scope"
+echo "[worker:scout] varredura 3/4 — backlog needs-scope"
 
 NEEDS_SCOPE_COUNT=$(gh issue list --state open --label "status:needs-scope" --json number | jq length)
 echo "[worker:scout] issues needs-scope: $NEEDS_SCOPE_COUNT"
@@ -108,13 +94,13 @@ if [ "$NEEDS_SCOPE_COUNT" -ge 10 ]; then
   fi
 fi
 
-echo "[worker:scout] varredura 4/5 — backlog: concluída"
+echo "[worker:scout] varredura 3/4 — backlog: concluída"
 ```
 
-### Varredura 5 — PRs sem issue vinculada abertas há mais de 3 dias
+### Varredura 4 — PRs sem issue vinculada abertas há mais de 3 dias
 
 ```bash
-echo "[worker:scout] varredura 5/5 — PRs soltas"
+echo "[worker:scout] varredura 4/4 — PRs soltas"
 
 gh pr list --state open --json number,title,createdAt,body | \
   jq -r '.[] | select(
@@ -129,7 +115,7 @@ gh pr list --state open --json number,title,createdAt,body | \
     fi
   done
 
-echo "[worker:scout] varredura 5/5 — PRs soltas: concluída"
+echo "[worker:scout] varredura 4/4 — PRs soltas: concluída"
 ```
 
 ---

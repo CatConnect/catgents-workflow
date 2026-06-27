@@ -96,20 +96,22 @@ Após receber retorno:
 ```bash
 gh pr edit <N> \
   --remove-label "status:needs-review" \
-  --add-label "status:qa-approved"
+  --add-label "status:qa-approved" \
+  --remove-assignee @me
 gh pr comment <N> \
   --body "## ✅ QA aprovado\n\n$COMENTARIO_QA"
-echo "[worker:qa] ✓ PR #<N> → qa-approved"
+echo "[worker:qa] ✓ PR #<N> → qa-approved (assignee removido — team-manager assignará reviewer)"
 ```
 
 **Se bloqueado:**
 ```bash
 gh pr edit <N> \
   --remove-label "status:needs-review" \
-  --add-label "status:qa-blocked"
+  --add-label "status:qa-blocked" \
+  --remove-assignee @me
 gh pr comment <N> \
   --body "## ❌ QA bloqueado\n\n$COMENTARIO_QA"
-echo "[worker:qa] ✗ PR #<N> → qa-blocked"
+echo "[worker:qa] ✗ PR #<N> → qa-blocked (assignee removido — team-manager assignará dev)"
 ```
 
 ---
