@@ -152,8 +152,10 @@ Escopo (do comentário de triage/pm): <copie>
 Repo: <url> | Stack: <linguagem/framework>
 Convenções: <leia CLAUDE.md ou README>
 
+Raciocine passo a passo antes de retornar. O campo reasoning deve ser preenchido antes dos demais.
+
 0. VERIFICAR ISSUE: gh issue view <N> --json state,title
-   Se state != "OPEN" → retorne { erro: "issue fechada ou inexistente", acao: "nenhuma" } imediatamente.
+   Se state != "OPEN" → retorne { reasoning: "issue não está aberta", erro: "issue fechada ou inexistente", acao: "nenhuma" } imediatamente.
 1. Crie branch: <area>/<N>-<slug>
 2. Implemente apenas o escopo — nada além
 3. Rode os testes: <comando>
@@ -161,9 +163,19 @@ Convenções: <leia CLAUDE.md ou README>
    a. Liste arquivos modificados: git diff --name-only main
    b. Compare com o escopo declarado no comentário de triage/pm
    c. Se houver arquivo fora do escopo → desfaça as mudanças naquele arquivo (git checkout main -- <arquivo>)
-   d. Se o escopo não foi coberto → NÃO abra PR, retorne { erro: "escopo incompleto", faltando: [...] }
+   d. Se o escopo não foi coberto → NÃO abra PR, retorne { reasoning: "...", erro: "escopo incompleto", faltando: [...] }
 5. Abra PR: gh pr create --title "<título>" --body "Closes #<N>\n\n<resumo>"
-6. Retorne: { pr: N, branch: "...", testes: "ok|falhou", arquivos_modificados: [...], reasoning: "<por que cada decisão foi tomada>" }
+6. Retorne:
+{
+  "reasoning": "<por que cada decisão foi tomada — preencha primeiro>",
+  "pr": N,
+  "branch": "...",
+  "testes": "ok|falhou",
+  "arquivos_modificados": [...],
+  "arquivos_ignorados": null
+}
+
+Antes de retornar: verifique se o JSON é válido e todos os campos estão presentes. Campos ausentes → null, nunca omita.
 ```
 
 **Se subagente retornar erro de issue fechada:**
@@ -193,11 +205,20 @@ PR #<N> foi bloqueada com os seguintes problemas:
 
 Branch: <branch> | Repo: <url>
 
+Raciocine passo a passo antes de retornar. O campo reasoning deve ser o primeiro a ser preenchido.
+
 1. Leia o diff: gh pr diff <N>
 2. Corrija apenas os problemas listados — nada além
 3. Rode os testes: <comando>
 4. Commit e push na mesma branch
-5. Retorne: { correcoes: [...], testes: "ok|falhou" }
+5. Retorne:
+{
+  "reasoning": "<o que foi corrigido e por quê cada decisão>",
+  "correcoes": [...],
+  "testes": "ok|falhou"
+}
+
+Antes de retornar: verifique se o JSON é válido e todos os campos estão presentes. Campos ausentes → null, nunca omita.
 ```
 
 **Após correção:**
@@ -294,6 +315,9 @@ PR #<N>: <título>
 Issue vinculada: #<M> — <título>
 Escopo esperado (do comentário de triage/pm): <copie>
 
+Raciocine passo a passo antes de retornar. O campo reasoning deve ser o primeiro a ser preenchido.
+Se o diff ultrapassar 500 linhas, analise apenas os arquivos de maior risco e liste os ignorados.
+
 Esta é uma revisão de código, não QA comportamental. O QA worker fará
 a verificação de comportamento separadamente.
 
@@ -302,7 +326,16 @@ a verificação de comportamento separadamente.
 3. Rode os testes automatizados: <comando>
 4. O código tem problemas críticos: lógica errada, segurança óbvia, testes quebrados?
 
-Retorne: { veredicto: "ok|problemas", testes: "ok|falhou", problemas: [...], reasoning: "<por que aprovado ou rejeitado, decisão por decisão>" }
+Retorne:
+{
+  "reasoning": "<por que aprovado ou rejeitado — preencha antes de decidir>",
+  "veredicto": "ok|problemas",
+  "testes": "ok|falhou",
+  "problemas": [...],
+  "arquivos_ignorados": null
+}
+
+Antes de retornar: verifique se o JSON é válido e todos os campos estão presentes. Campos ausentes → null, nunca omita.
 ```
 
 **Se ok:**
@@ -380,6 +413,9 @@ PR #<N>: <título>
 Issue vinculada: #<M>
 Escopo esperado: <copie do comentário de triage/pm>
 
+Raciocine passo a passo antes de retornar. O campo reasoning deve ser o primeiro a ser preenchido.
+Se o diff ultrapassar 500 linhas, analise apenas os arquivos de maior risco e liste os ignorados.
+
 Verificação em 3 camadas:
 
 1. PROGRAMÁTICA — rode os testes:
@@ -396,13 +432,16 @@ Verificação em 3 camadas:
 
 Retorne:
 {
+  "reasoning": "<raciocínio por trás do veredicto — preencha antes de decidir>",
   "veredicto": "aprovado|bloqueado",
   "testes": "ok|falhou — <detalhes>",
   "escopo": "coberto|incompleto — <o que falta>",
   "comportamento": "ok|quebrado — <o que aconteceu>",
   "problemas": ["problema 1"],
-  "reasoning": "<raciocínio por trás do veredicto — o que pesou mais na decisão>"
+  "arquivos_ignorados": null
 }
+
+Antes de retornar: verifique se o JSON é válido e todos os campos estão presentes. Campos ausentes → null, nunca omita.
 ```
 
 **Antes de aprovar — verifique mergeabilidade e CI:**
