@@ -23,7 +23,7 @@ Execute todas as varreduras. Cada uma é independente.
 ### Varredura 1 — Branches órfãs
 
 ```bash
-echo "[worker:scout] varredura 1/5 — branches órfãs"
+echo "[worker:scout] varredura 1/4 — branches órfãs"
 
 git fetch --prune
 BRANCHES=$(git branch -r | grep -v HEAD | sed 's|origin/||')
@@ -42,7 +42,7 @@ echo "$BRANCHES" | while read BRANCH; do
   fi
 done
 
-echo "[worker:scout] varredura 1/5 — branches órfãs: concluída"
+echo "[worker:scout] varredura 1/4 — branches órfãs: concluída"
 ```
 
 ### Varredura 2 — Issues estagnadas

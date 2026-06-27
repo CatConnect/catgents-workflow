@@ -162,10 +162,10 @@ gh pr create \
   --base main \
   --head <branch>
 
-PR_URL=$(gh pr list --head <branch> --json url -q '.[0].url')
-gh pr edit --url "$PR_URL" --add-label "status:needs-review"
+PR_N=$(gh pr list --head <branch> --json number -q '.[0].number')
+gh pr edit "$PR_N" --add-label "status:needs-review"
 
-echo "[worker:dev] ✓ implementação #<N> — PR aberta: $PR_URL"
+echo "[worker:dev] ✓ implementação #<N> — PR #$PR_N aberta"
 ```
 
 ---

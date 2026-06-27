@@ -42,9 +42,12 @@ echo "[worker:qa] → revisando PR #<N> — <título>"
 # 1. Base branch correta?
 BASE=$(gh pr view <N> --json baseRefName -q '.baseRefName')
 if [ "$BASE" != "main" ] && [ "$BASE" != "master" ]; then
-  gh pr edit <N> --remove-label "status:needs-review" --add-label "status:qa-blocked"
+  gh pr edit <N> \
+    --remove-label "status:needs-review" \
+    --add-label "status:qa-blocked" \
+    --remove-assignee @me
   gh pr comment <N> --body "## ❌ QA bloqueado — base branch incorreta\n\nBase branch é '$BASE', deveria ser 'main' ou 'master'.\n\nCorrija com: \`git rebase main\`"
-  echo "[worker:qa] ✗ PR #<N> — base branch incorreta: $BASE"
+  echo "[worker:qa] ✗ PR #<N> — base branch incorreta: $BASE (assignee removido)"
   continue
 fi
 

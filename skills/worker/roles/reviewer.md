@@ -57,9 +57,14 @@ fi
 # 2. Conflitos?
 MERGEABLE=$(gh pr view <N> --json mergeable -q '.mergeable')
 if [ "$MERGEABLE" != "MERGEABLE" ]; then
+  AUTHOR=$(gh pr view <N> --json author -q '.author.login')
+  gh pr edit <N> \
+    --remove-label "status:qa-approved" \
+    --add-label "status:qa-blocked" \
+    --remove-assignee @me
   gh pr comment <N> \
-    --body "## ⚠️ Merge bloqueado — conflitos\n\nPR tem conflitos com main. @$(gh pr view <N> --json author -q '.author.login') resolva os conflitos."
-  echo "[worker:reviewer] ✗ PR #<N> — conflitos, aguardando resolução"
+    --body "## ⚠️ Merge bloqueado — conflitos\n\nPR tem conflitos com main. @$AUTHOR resolva os conflitos com \`git rebase main\`.\nTeam-manager assignará dev para corrigir."
+  echo "[worker:reviewer] ✗ PR #<N> — conflitos, retornada para qa-blocked (assignee removido)"
   continue
 fi
 ```
