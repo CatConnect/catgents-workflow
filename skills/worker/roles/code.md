@@ -94,26 +94,22 @@ Também corrige PRs que QA ou UX bloquearam.
 
 ### Filtro
 
-**EXECUTE ESTES COMANDOS AGORA — ANTES DE QUALQUER OUTRA COISA:**
+**O valor de `TOTAL_BLOCKED` foi calculado no passo 0.8 da inicialização.**
 
+**Se `TOTAL_BLOCKED > 0` — este ciclo é de correção:**
 ```bash
-# GATE OBRIGATÓRIA — rode antes de olhar qualquer issue
-BLOCKED_QA=$(gh pr list --state open --label "status:qa-blocked" --author @me --json number,title,headRefName 2>/dev/null)
-BLOCKED_UX=$(gh pr list --state open --label "status:ux-blocked" --author @me --json number,title,headRefName 2>/dev/null)
-CI_FAILING=$(gh pr list --state open --label "status:needs-review" --author @me \
-  --json number,title,headRefName,statusCheckRollup 2>/dev/null \
-  | jq '[.[] | select(.statusCheckRollup != null and (.statusCheckRollup[] | .conclusion == "FAILURE" or .conclusion == "TIMED_OUT"))]')
-
-TOTAL_BLOCKED=$(echo "$BLOCKED_QA $BLOCKED_UX $CI_FAILING" | jq -s '[.[][] ] | length' 2>/dev/null || echo 0)
-echo "[worker:dev] filtro 1/2 — PRs com problema: $TOTAL_BLOCKED"
+echo "[worker:dev] filtro 1/2 — $TOTAL_BLOCKED PRs bloqueadas — ciclo dedicado a correções"
+# Liste as PRs bloqueadas:
+gh pr list --state open --label "status:qa-blocked" --author @me --json number,title,headRefName
+gh pr list --state open --label "status:ux-blocked" --author @me --json number,title,headRefName
+gh pr list --state open --label "status:needs-review" --author @me --json number,title,statusCheckRollup \
+  | jq '[.[] | select(.statusCheckRollup != null and (.statusCheckRollup[] | .conclusion == "FAILURE" or .conclusion == "TIMED_OUT"))]'
 ```
+Corrija **todas**. Depois vá para Fase 4 → Fase 5. **Não execute o bloco abaixo.**
 
-**Se `TOTAL_BLOCKED > 0`:**
-- Corrija **todas** as PRs com problema (veja "Ação — corrigir PR bloqueada" abaixo)
-- **PARE AQUI. Não execute o Filtro 2. Não pegue issue nova. Vá para Fase 4 → Fase 5.**
+---
 
-**Só execute o Filtro 2 se `TOTAL_BLOCKED = 0`:**
-
+**Se `TOTAL_BLOCKED = 0` — este ciclo é de implementação:**
 ```bash
 echo "[worker:dev] filtro 2/2 — issues prontas: buscando..."
 gh issue list --state open \
@@ -122,8 +118,6 @@ gh issue list --state open \
 ```
 Exclua: `status:blocked`, `status:in-progress`, `risk:conflict`, `risk:high`.
 Pegue **no máximo 1 issue por ciclo** (lock exclusivo).
-
-**Nunca pule o Filtro 1. Nunca execute o Filtro 2 sem confirmar que Filtro 1 = 0.**
 
 ### Ação — implementar issue
 

@@ -107,6 +107,24 @@ fi
 [worker:<papel>] 🐱 território demarcado — iniciando loop
 ```
 
+### 0.8 — Gate de PRs bloqueadas (SOMENTE para `dev` e `dev-jules`)
+
+**Se você é o worker `dev` ou `dev-jules`, execute estes comandos agora e registre o resultado antes de continuar:**
+
+```bash
+BLOCKED_QA=$(gh pr list --state open --label "status:qa-blocked" --author @me --json number,title 2>/dev/null | jq 'length // 0')
+BLOCKED_UX=$(gh pr list --state open --label "status:ux-blocked" --author @me --json number,title 2>/dev/null | jq 'length // 0')
+CI_FAILING=$(gh pr list --state open --label "status:needs-review" --author @me \
+  --json number,statusCheckRollup 2>/dev/null \
+  | jq '[.[] | select(.statusCheckRollup != null and (.statusCheckRollup[] | .conclusion == "FAILURE" or .conclusion == "TIMED_OUT"))] | length // 0')
+TOTAL_BLOCKED=$((BLOCKED_QA + BLOCKED_UX + CI_FAILING))
+echo "[worker:dev] 0.8 gate — PRs bloqueadas: $TOTAL_BLOCKED"
+```
+
+Guarde o valor de `TOTAL_BLOCKED`. Ele determina o que você faz no ciclo:
+- `TOTAL_BLOCKED > 0` → o ciclo inteiro é dedicado a corrigir PRs. Não busque issues. Não execute Filtro 2.
+- `TOTAL_BLOCKED = 0` → prossiga normalmente para o loop.
+
 ---
 
 ## Regras invioláveis — leia antes do loop
