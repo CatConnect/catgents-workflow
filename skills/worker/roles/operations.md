@@ -16,7 +16,7 @@ do sistema, fecha issues/PRs abandonadas e mantém o board saudável.
 
 ### Filtro + Ação
 
-O stale opera em 4 varreduras por ciclo, nesta ordem:
+O stale opera em **6 varreduras por ciclo, todas obrigatórias**. Encontrar trabalho em uma varredura **não encerra o ciclo** — continue até completar todas as 6 antes de dormir.
 
 ---
 
