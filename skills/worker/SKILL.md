@@ -194,16 +194,35 @@ A escrita via `tmp + mv` é atômica — sem race condition.
 
 Definida em `roles/<arquivo>.md` para cada papel.
 
-**Log de progresso obrigatório por filtro/varredura/modo:**
-Todo worker que tem múltiplos filtros, varreduras ou modos deve imprimir uma linha antes de executar cada um:
+**Protocolo de comunicação terminal (obrigatório para todos workers):**
+
+Antes de cada ação sobre uma issue ou PR:
+```
+[worker:<papel>] → iniciando <ação> em #<N> — <descrição curta>
+```
+Após concluir:
+```
+[worker:<papel>] ✓ <ação> em #<N> — <resultado em uma linha>
+```
+Exemplos válidos:
+```
+[worker:dev]      → iniciando implementação em #42 — branch: backend/42-fix-auth
+[worker:dev]      ✓ implementação em #42 — PR #87 aberta, testes: ok
+[worker:qa]       → iniciando revisão em PR #87 — issue vinculada: #42
+[worker:qa]       ✓ revisão em PR #87 — veredicto: aprovado
+[worker:reviewer] → mergeando PR #87 — issue: #42
+[worker:reviewer] ✓ merge PR #87 — issue #42 fechada automaticamente
+[worker:stale]    → corrigindo estado inválido em #15 — in-progress sem assignee
+[worker:stale]    ✓ corrigido #15 — retornado para status:ready
+```
+
+**Log de progresso por filtro/varredura/modo:**
+Workers com múltiplos filtros devem imprimir antes e depois de cada um:
 ```
 [worker:<papel>] filtro <N>/<TOTAL> — <nome>: iniciando
-```
-E uma linha ao concluir:
-```
 [worker:<papel>] filtro <N>/<TOTAL> — <nome>: <X achados | nenhum>
 ```
-**Antes de dormir**, confirme que todas as linhas de conclusão foram impressas. Se uma linha estiver faltando — a etapa não rodou — volte e execute-a. Isso se aplica a todos os workers, não só ao stale.
+**Antes de dormir**, confirme que todas as linhas de conclusão foram impressas. Se uma linha estiver faltando → a etapa não rodou → volte e execute-a.
 
 Restrições universais que se aplicam dentro desta fase:
 

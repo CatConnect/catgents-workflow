@@ -159,7 +159,15 @@ Raciocine passo a passo antes de retornar. O campo reasoning deve ser preenchido
 
 0. VERIFICAR ISSUE: gh issue view <N> --json state,title
    Se state != "OPEN" → retorne { reasoning: "issue não está aberta", erro: "issue fechada ou inexistente", acao: "nenhuma" } imediatamente.
-1. Crie branch: <area>/<N>-<slug>
+1. PREPARAÇÃO GIT — antes de qualquer coisa:
+   a. git fetch --prune
+   b. git checkout main && git pull origin main
+   c. Verifique se branch já existe remotamente:
+      git branch -r --list "origin/<area>/<N>-*"
+      Se existir → retome ela (git checkout <branch-existente>) em vez de criar nova
+   d. Se não existir → git checkout -b <area>/<N>-<slug>
+   e. Anuncie no terminal: "[worker:dev] iniciando #<N> — branch: <branch>"
+1b. Crie branch: <area>/<N>-<slug> (só se passo 1c não encontrou branch existente)
 2. Implemente apenas o escopo — nada além
 3. Rode os testes: <comando>
 4. PRÉ-CHECAGEM DE ESCOPO — antes de abrir PR:
@@ -403,7 +411,20 @@ Processe **uma PR por ciclo** (lock exclusivo — subagente de QA é custoso). S
 
 ### Ação
 
+**Verificação de base branch (antes do lock):**
+```bash
+BASE=$(gh pr view <N> --json baseRefName -q '.baseRefName')
+if [ "$BASE" != "main" ] && [ "$BASE" != "master" ]; then
+  gh pr edit <N> --add-label "status:qa-blocked"
+  gh pr comment <N> --body "## ⚠️ Base branch incorreta\nEsta PR aponta para \`$BASE\` em vez de \`main\`. Faça rebase para main antes da revisão de QA."
+  # Não prossiga — skip para próxima PR
+fi
+```
+
 **Lock pattern:**
+```bash
+echo "[worker:qa] → iniciando revisão em PR #<N>"
+```
 1. `gh pr comment <N> --body "starting QA — worker:qa — $(date -u +%Y-%m-%dT%H:%M:%SZ)"`
 2. Aguarde 5s
 3. Confirme: nenhum outro "starting QA" nos últimos 30s → se houver, abandone
@@ -472,6 +493,7 @@ gh pr edit <N> --remove-label "status:needs-review" --add-label "status:qa-appro
 gh pr comment <N> --body "## ✅ QA aprovado
 Testes: <resultado> | Escopo: coberto | Comportamento: verificado
 Pronta para merge."
+echo "[worker:qa] ✓ revisão PR #<N> — veredicto: aprovado"
 ```
 
 **Se bloqueado:**
@@ -483,6 +505,7 @@ Problemas:
 Como reproduzir:
 1. <passo>
 Esperado: <X> | Atual: <Y>"
+echo "[worker:qa] ✓ revisão PR #<N> — veredicto: bloqueado (<problema resumido>)"
 ```
 
 **Nunca:** editar código, fazer merge.
@@ -540,10 +563,23 @@ Todas devem passar:
 
 **Se tudo ok:**
 ```bash
+echo "[worker:reviewer] → mergeando PR #<N>"
 gh pr merge <N> --squash --delete-branch
+
+# Confirmar que issues vinculadas foram fechadas
+CLOSED_ISSUES=$(gh pr view <N> --json body -q '.body' | grep -oE 'Closes #[0-9]+|Fixes #[0-9]+|Resolves #[0-9]+' | grep -oE '[0-9]+')
+for ISSUE_N in $CLOSED_ISSUES; do
+  STATE=$(gh issue view $ISSUE_N --json state -q '.state' 2>/dev/null)
+  if [ "$STATE" != "CLOSED" ]; then
+    gh issue close $ISSUE_N --comment "Fechada via merge da PR #<N>."
+    echo "[worker:reviewer] ⚠️ issue #$ISSUE_N não fechou automaticamente — fechada manualmente"
+  fi
+done
+
 gh pr comment <N> --body "## 🏠 Merge realizado
-Issues fechadas: #<N>
+Issues fechadas: $CLOSED_ISSUES
 Resumo: <1-2 linhas>"
+echo "[worker:reviewer] ✓ merge PR #<N> — issues fechadas: $CLOSED_ISSUES"
 ```
 
 **Se não ok — roteie pelo motivo:**
