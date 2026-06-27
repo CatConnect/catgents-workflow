@@ -82,15 +82,18 @@ Também corrige PRs que QA ou UX bloquearam.
 
 ### Filtro
 
-**Issues prontas:**
+O dev executa **2 filtros por ciclo, ambos obrigatórios**. Processar um não cancela o outro — rode os dois antes de dormir.
+
+**Filtro 1 — Issues prontas:**
 ```bash
 gh issue list --state open \
   --label "status:ready" \
   --json number,title,labels,assignees,body
 ```
 Exclua: `status:blocked`, `status:in-progress`, `risk:conflict`, `risk:high`.
+Pegue **no máximo 1 issue por ciclo** (lock exclusivo — não processe múltiplas em paralelo).
 
-**PRs bloqueadas (suas):**
+**Filtro 2 — PRs bloqueadas (suas):**
 ```bash
 gh pr list --state open \
   --label "status:qa-blocked" \
@@ -102,6 +105,7 @@ gh pr list --state open \
   --author @me \
   --json number,title,body,headRefName,author
 ```
+Processe **todas** as PRs bloqueadas suas encontradas — não há lock aqui, são correções independentes.
 
 ### Ação — implementar issue
 
@@ -229,7 +233,9 @@ Instale em: https://jules.google.com e adicione ao repo."; exit 1; }
 
 ### Filtro
 
-**Issues prontas para Jules:**
+O dev-jules executa **3 filtros por ciclo, todos obrigatórios**. Processar um não cancela os outros.
+
+**Filtro 1 — Issues prontas para Jules:**
 ```bash
 gh issue list --state open \
   --label "status:ready" \
@@ -241,20 +247,22 @@ Exclua: `status:blocked`, `status:in-progress`, `risk:high`, `risk:auth`, issues
 ```bash
 JULES_COUNT=$(gh issue list --label "jules" --state open --json number 2>/dev/null | jq 'length // 0')
 ```
-Se `JULES_COUNT >= 2` → aguarde antes de atribuir mais.
+Se `JULES_COUNT >= 2` → não atribua novas, mas continue para os filtros 2 e 3.
 
-**PRs do Jules para monitorar:**
+**Filtro 2 — PRs do Jules para monitorar:**
 ```bash
 gh pr list --state open --json number,title,body,labels,headRefName
 ```
 Identifique PRs cujo body menciona `Closes #<N>` de issues com label `jules`.
+Processe **todas** as PRs do Jules encontradas.
 
-**PRs do Jules bloqueadas:**
+**Filtro 3 — PRs do Jules bloqueadas:**
 ```bash
 gh pr list --state open --label "status:qa-blocked" --json number,title,body
 gh pr list --state open --label "status:ux-blocked" --json number,title,body
 ```
 Filtre as que vieram de issues com label `jules`.
+Processe **todas** as bloqueadas encontradas.
 
 ### Ação — atribuir ao Jules
 
@@ -353,6 +361,8 @@ gh pr list --state open \
 ```
 **Exclua PRs com `status:ux-blocked`** — aguardar correção UX antes de testar.
 
+Processe **uma PR por ciclo** (lock exclusivo — subagente de QA é custoso). Se houver múltiplas, pegue a mais antiga (`createdAt` menor).
+
 ### Ação
 
 **Lock pattern:**
@@ -448,6 +458,7 @@ gh pr list --state open \
   --label "status:qa-approved" \
   --json number,title,body,labels,mergeable,statusCheckRollup,files
 ```
+Processe **todas** as PRs aprovadas encontradas — merges são atômicos e independentes entre si.
 
 ### Ação — verificar presença do ui-ux para PRs com UI
 

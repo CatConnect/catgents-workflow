@@ -106,9 +106,8 @@ mv "${MSG}.tmp" "${MSG}"
 
 ## UI-UX
 
-O cat analista de interface. Dois modos em paralelo: revisa PRs de frontend
-antes do merge (ponto de vista do usuário) e varre o codebase em busca de
-problemas técnicos de UI.
+O cat analista de interface. **2 modos por ciclo, ambos obrigatórios.**
+Modo 1 (revisão de PR) não cancela o Modo 2 (varredura proativa) — execute os dois antes de dormir.
 
 **SLEEP:** 300s | **SLEEP_MAX:** 900s | **LOCK:** sim (ao revisar PR)
 
