@@ -205,8 +205,48 @@ PRs abertas há mais de 14 dias sem review → comente pedindo status.
 
 PRs abertas há mais de 14 dias sem review → comente pedindo status.
 
+PRs abertas há mais de 14 dias sem review → comente pedindo status.
+
 **Nunca fechar PR** sem comentar antes e aguardar 7 dias.
 **Nunca fechar** issues com `risk:high` ou `status:in-progress` com assignee ativo.
+
+---
+
+**Varredura 6 — Branches órfãs**
+
+Liste todas as branches remotas exceto `main`/`master` e branches de PRs abertas:
+```bash
+# Branches remotas
+git fetch --prune
+ALL_BRANCHES=$(git branch -r --format='%(refname:short)' | sed 's|origin/||' | grep -v '^main$\|^master$')
+
+# Branches com PR aberta — não toque
+OPEN_PR_BRANCHES=$(gh pr list --state open --json headRefName -q '.[].headRefName')
+
+# Branches candidatas = ALL_BRANCHES - OPEN_PR_BRANCHES
+for BRANCH in $ALL_BRANCHES; do
+  echo "$OPEN_PR_BRANCHES" | grep -qx "$BRANCH" && continue
+
+  # Data do último commit na branch
+  LAST_COMMIT=$(git log -1 --format="%ci" "origin/$BRANCH" 2>/dev/null)
+  LAST_EPOCH=$(date -d "$LAST_COMMIT" +%s 2>/dev/null || date -j -f "%Y-%m-%d %H:%M:%S %z" "$LAST_COMMIT" +%s 2>/dev/null || echo 0)
+  DAYS_OLD=$(( ( $(date +%s) - LAST_EPOCH ) / 86400 ))
+
+  if [ $DAYS_OLD -ge 30 ]; then
+    # Verifique se a PR associada foi mergeada ou fechada
+    PR_STATE=$(gh pr list --state all --head "$BRANCH" --json state -q '.[0].state // "NONE"')
+
+    if [ "$PR_STATE" = "MERGED" ] || [ "$PR_STATE" = "CLOSED" ] || [ "$PR_STATE" = "NONE" ]; then
+      git push origin --delete "$BRANCH"
+      echo "## $(date +%Y-%m-%d) · worker:stale · branch-deletada · #cleanup
+O que: Branch $BRANCH deletada (${DAYS_OLD}d sem commit, PR: $PR_STATE)
+Refs: branch/$BRANCH" >> kb/LOG.md
+    fi
+  fi
+done
+```
+
+**Nunca deletar:** `main`, `master`, branches com PR aberta, branches com menos de 30 dias.
 
 ---
 
