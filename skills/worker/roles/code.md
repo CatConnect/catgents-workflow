@@ -364,16 +364,24 @@ Retorne:
 }
 ```
 
-**Antes de aprovar — verifique mergeabilidade:**
+**Antes de aprovar — verifique mergeabilidade e CI:**
 ```bash
 gh pr view <N> --json mergeable,statusCheckRollup
 ```
+
 Se `mergeable = CONFLICTING`:
 ```bash
 gh pr edit <N> --remove-label "status:needs-review" --add-label "status:qa-blocked"
 gh pr comment <N> --body "## ⚠️ Conflito de merge\nA branch tem conflito com main. Faça rebase e resolva os conflitos antes da revisão de QA."
 ```
-Não prossiga com QA — o dev precisa resolver o conflito primeiro.
+Não prossiga — o dev precisa resolver o conflito primeiro.
+
+Se algum check em `statusCheckRollup` tem `conclusion = FAILURE` ou `conclusion = TIMED_OUT`:
+```bash
+gh pr edit <N> --remove-label "status:needs-review" --add-label "status:qa-blocked"
+gh pr comment <N> --body "## ❌ CI falhou — QA bloqueado\n$(gh pr checks <N>)\nO CI precisa estar verde antes da revisão de QA."
+```
+Não prossiga — o dev precisa corrigir o CI primeiro.
 
 **Se aprovado:**
 ```bash
