@@ -84,20 +84,23 @@ Também corrige PRs que QA ou UX bloquearam.
 
 O dev executa **2 filtros por ciclo em ordem de prioridade**. PRs bloqueadas têm prioridade absoluta — só pegue issue nova se não houver nenhuma PR bloqueada sua.
 
-**Filtro 1 (PRIORIDADE) — PRs bloqueadas (suas):**
+**Filtro 1 (PRIORIDADE) — PRs suas com problema:**
 ```bash
-gh pr list --state open \
-  --label "status:qa-blocked" \
-  --author @me \
-  --json number,title,body,headRefName,author
-# também:
-gh pr list --state open \
-  --label "status:ux-blocked" \
-  --author @me \
-  --json number,title,body,headRefName,author
+# qa-blocked ou ux-blocked
+gh pr list --state open --label "status:qa-blocked" --author @me \
+  --json number,title,body,headRefName,statusCheckRollup
+gh pr list --state open --label "status:ux-blocked" --author @me \
+  --json number,title,body,headRefName,statusCheckRollup
+
+# needs-review com CI falhando (QA ainda não processou, mas CI já falhou)
+gh pr list --state open --label "status:needs-review" --author @me \
+  --json number,title,body,headRefName,statusCheckRollup \
+  | jq '[.[] | select(.statusCheckRollup[]?.conclusion == "FAILURE" or .statusCheckRollup[]?.conclusion == "TIMED_OUT")]'
 ```
-Processe **todas** as PRs bloqueadas suas antes de qualquer outra coisa.
-Se encontrou PRs bloqueadas → corrija-as e **não pegue issue nova neste ciclo**.
+Processe **todas** as PRs com problema antes de qualquer outra coisa.
+Se encontrou qualquer PR sua com CI falhando ou label de bloqueio → corrija-as e **não pegue issue nova neste ciclo**.
+
+**Regra de ouro: se qualquer PR sua está aberta com CI vermelho → você não abre nova PR.**
 
 **Filtro 2 — Issues prontas (só se Filtro 1 estiver vazio):**
 ```bash
