@@ -82,6 +82,26 @@ trap 'echo "{\"worker\":\"<papel>\",\"status\":\"stopped\",\"last_cycle\":\"$(da
   > kb/presence/<papel>.json' EXIT INT TERM
 ```
 
+### 0.6b — Verificar contexto do repositório
+```bash
+# Repositório precisa ter arquivo de contexto para os subagentes operarem bem
+CONTEXT_FILE=$(ls CLAUDE.md AGENTS.md .claude/CLAUDE.md 2>/dev/null | head -1)
+if [ -z "$CONTEXT_FILE" ]; then
+  echo "[worker:<papel>] ⚠️ Nenhum CLAUDE.md ou AGENTS.md encontrado."
+  echo "Subagentes terão contexto reduzido. Criando issue de documentação..."
+  gh issue list --state open --search "CLAUDE.md" --json number -q '.[0].number' | grep -q . || \
+  gh issue create \
+    --title "docs: criar CLAUDE.md com convenções do projeto" \
+    --body "## Contexto ausente para workers autônomos
+Workers de IA precisam de um arquivo CLAUDE.md ou AGENTS.md com:
+- Stack e comandos de teste
+- Convenções de código e nomenclatura
+- Áreas protegidas e regras de deploy
+Sem esse arquivo, subagentes operam sem contexto e cometem mais erros de escopo." \
+    --label "status:needs-scope,area:docs"
+fi
+```
+
 ### 0.7 — Anunciar
 ```
 [worker:<papel>] 🐱 território demarcado — iniciando loop
@@ -193,8 +213,10 @@ padrão, tomou decisão não óbvia). Ciclos sem trabalho não geram entrada no 
 ```
 ## YYYY-MM-DD · worker:<papel> · <ação resumida> · #<tags>
 O que: <uma linha do que foi feito>
+Por que: <reasoning do subagente — copiado do campo reasoning do retorno>
 Refs: [[<signal-slug>]], #<issue-N>, #<pr-N>
 ```
+O campo `Por que:` vem do campo `reasoning` retornado pelos subagentes. Se o subagente não retornou `reasoning`, deixe vazio — nunca invente.
 
 **Signal** — escreva na 2ª+ ocorrência de um padrão:
 ```bash
@@ -226,13 +248,25 @@ sleep <sleep_interval>
 
 **Backoff quando sem trabalho:**
 ```
+ciclos_sem_trabalho++
 sleep_atual = min(sleep_atual × 2, sleep_max)
 ```
 
 **Reset quando trabalho encontrado:**
 ```
+ciclos_sem_trabalho = 0
 sleep_atual = sleep_interval
 ```
+
+**Sleep dinâmico — ajuste permanente após inatividade prolongada:**
+```
+se ciclos_sem_trabalho >= 5:
+  sleep_interval = min(sleep_interval × 2, sleep_max)
+  ciclos_sem_trabalho = 0
+  log: "[worker:<papel>] 📉 sem trabalho há 5 ciclos — reduzindo cadência"
+```
+O sleep_interval base aumenta permanentemente até que trabalho seja encontrado (aí reseta).
+Isso evita polling caro em repositórios com pouca atividade.
 
 **Sem trabalho:** backoff até `sleep_max` e permaneça aguardando indefinidamente.
 O worker nunca encerra sozinho — só para quando você fechar o terminal.

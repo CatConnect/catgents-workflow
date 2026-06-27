@@ -148,13 +148,61 @@ Reabra se ainda for relevante." --reason "not planned"
 
 ---
 
-**Varredura 4 — PRs abandonadas (14d+)**
+**Varredura 4 — Consolidação de signals (memória semântica)**
+
+Rode a cada 7 ciclos (uma vez por semana dado SLEEP=86400s). Spawne subagente:
+```
+Você é um subagente de consolidação de memória. NÃO pergunte — execute e retorne resultado estruturado.
+
+Leia todos os signals em kb/signals/*.md.
+Para cada grupo de signals com as mesmas tags[] E frequency >= 3:
+
+1. São sobre o mesmo padrão estrutural? (não apenas o mesmo arquivo)
+2. Se sim → proponha um signal consolidado que capture o padrão geral
+3. Liste os slugs originais que seriam substituídos
+
+Retorne: [{ slug_consolidado: "...", titulo: "...", tags: [...], frequency_total: N, slugs_originais: [...] }]
+Máximo 3 consolidações por ciclo.
+```
+
+Para cada consolidação proposta:
+```bash
+# Crie o signal consolidado
+cat > kb/signals/<slug_consolidado>.md << EOF
+---
+kind: signal
+title: "<título consolidado>"
+frequency: <frequency_total>
+last_seen: $(date +%Y-%m-%d)
+status: open
+tags: [<tags>]
+consolidated_from: [<slugs_originais>]
+---
+## Observação
+<padrão geral identificado>
+## Evidência
+Consolidado de: <slugs_originais>
+## Timeline
+- $(date +%Y-%m-%d): consolidado pelo worker:stale
+EOF
+
+# Archive os originais (não delete — mantém histórico)
+for slug in <slugs_originais>; do
+  sed -i 's/^status: open/status: archived/' "kb/signals/${slug}.md"
+done
+```
+
+---
+
+**Varredura 5 — PRs abandonadas (14d+)**
 
 ```bash
 gh pr list --state open \
   --json number,title,labels,updatedAt,isDraft \
   --limit 50
 ```
+PRs abertas há mais de 14 dias sem review → comente pedindo status.
+
 PRs abertas há mais de 14 dias sem review → comente pedindo status.
 
 **Nunca fechar PR** sem comentar antes e aguardar 7 dias.

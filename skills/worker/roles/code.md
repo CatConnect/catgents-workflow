@@ -152,8 +152,13 @@ Convenções: <leia CLAUDE.md ou README>
 1. Crie branch: <area>/<N>-<slug>
 2. Implemente apenas o escopo — nada além
 3. Rode os testes: <comando>
-4. Abra PR: gh pr create --title "<título>" --body "Closes #<N>\n\n<resumo>"
-5. Retorne: { pr: N, branch: "...", testes: "ok|falhou", observacoes: "..." }
+4. PRÉ-CHECAGEM DE ESCOPO — antes de abrir PR:
+   a. Liste arquivos modificados: git diff --name-only main
+   b. Compare com o escopo declarado no comentário de triage/pm
+   c. Se houver arquivo fora do escopo → desfaça as mudanças naquele arquivo (git checkout main -- <arquivo>)
+   d. Se o escopo não foi coberto → NÃO abra PR, retorne { erro: "escopo incompleto", faltando: [...] }
+5. Abra PR: gh pr create --title "<título>" --body "Closes #<N>\n\n<resumo>"
+6. Retorne: { pr: N, branch: "...", testes: "ok|falhou", arquivos_modificados: [...], reasoning: "<por que cada decisão foi tomada>" }
 ```
 
 **Se subagente retornar erro de issue fechada:**
@@ -287,7 +292,7 @@ a verificação de comportamento separadamente.
 3. Rode os testes automatizados: <comando>
 4. O código tem problemas críticos: lógica errada, segurança óbvia, testes quebrados?
 
-Retorne: { veredicto: "ok|problemas", testes: "ok|falhou", problemas: [...] }
+Retorne: { veredicto: "ok|problemas", testes: "ok|falhou", problemas: [...], reasoning: "<por que aprovado ou rejeitado, decisão por decisão>" }
 ```
 
 **Se ok:**
@@ -383,7 +388,8 @@ Retorne:
   "testes": "ok|falhou — <detalhes>",
   "escopo": "coberto|incompleto — <o que falta>",
   "comportamento": "ok|quebrado — <o que aconteceu>",
-  "problemas": ["problema 1"]
+  "problemas": ["problema 1"],
+  "reasoning": "<raciocínio por trás do veredicto — o que pesou mais na decisão>"
 }
 ```
 
