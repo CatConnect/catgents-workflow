@@ -11,6 +11,14 @@ As fases 1, 2, 4 e 5 são universais — veja `SKILL.md`.
 - Aplique `status:needs-scope` — o `pm` vai classificar depois
 - Nunca desenvolver, nunca fazer merge
 
+**Labels de área válidas para workers de descoberta:**
+- `area:backend` — lógica de servidor, APIs, workers, jobs
+- `area:frontend` — UI, componentes, CSS, acessibilidade
+- `area:infra` — CI/CD, deploy, dependências, Docker
+- `area:db` — migrations, queries, schema
+- `area:docs` — documentação, README, changelog
+- `area:qa` — testes, cobertura, regressões detectadas pelo qa-monitor
+
 ---
 
 ## SCOUT

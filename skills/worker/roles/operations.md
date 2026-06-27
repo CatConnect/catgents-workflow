@@ -31,13 +31,23 @@ gh issue list --state open --label "status:in-progress" \
 ```
 Para cada issue `in-progress`, verifique o presence do assignee:
 ```bash
-cat kb/presence/<assignee>.json 2>/dev/null
-# worker morto = last_cycle não existe OU now - last_cycle > 3 × sleep_interval
+ASSIGNEE=$(gh issue view <N> --json assignees -q '.assignees[0].login // empty')
+PRESENCE_FILE="kb/presence/${ASSIGNEE}.json"
+WORKER_DEAD=true
+if [ -n "$ASSIGNEE" ] && [ -f "$PRESENCE_FILE" ]; then
+  LAST_CYCLE=$(jq -r '.last_cycle // empty' "$PRESENCE_FILE" 2>/dev/null)
+  SLEEP_INTERVAL=$(jq -r '.sleep_interval // 300' "$PRESENCE_FILE" 2>/dev/null)
+  if [ -n "$LAST_CYCLE" ]; then
+    LAST_EPOCH=$(date -d "$LAST_CYCLE" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%SZ" "$LAST_CYCLE" +%s 2>/dev/null || echo 0)
+    NOW=$(date +%s)
+    [ $((NOW - LAST_EPOCH)) -le $((3 * SLEEP_INTERVAL)) ] && WORKER_DEAD=false
+  fi
+fi
 ```
-Se worker morto → remova `status:in-progress`, aplique `status:ready`, comente:
+Se `WORKER_DEAD=true` → remova `status:in-progress`, aplique `status:ready`, comente:
 ```
 ## 🔄 Estado corrigido pelo stale
-Worker assignado não responde há <tempo>. Issue retornada para status:ready.
+Worker assignado não responde. Issue retornada para status:ready.
 ```
 
 **`status:blocked` + `risk:conflict` com PR já mergeada:**
@@ -111,12 +121,22 @@ Antes de agir, verifique:
 - É issue de tracking/roadmap? → ignore
 - Tem assignee ativo (presence válido)? → comente pedindo status, não feche
 
-**Primeira passagem — aviso (7 dias):**
+**Primeira passagem — aviso (dias 30-36):**
+Antes de avisar, verifique se já avisou neste ciclo consultando o LOG:
+```bash
+grep "stale-aviso #<N>" kb/LOG.md 2>/dev/null && continue
+```
+Se não avisou ainda:
 ```bash
 gh issue comment <N> --body "## 😴 Issue inativa
 Sem atividade há 30+ dias. Se ainda é relevante, atualize com contexto.
 Será fechada em 7 dias automaticamente.
 *worker:stale*"
+
+# Registre no LOG para não avisar de novo no próximo ciclo
+echo "## $(date +%Y-%m-%d) · worker:stale · stale-aviso #<N> · #stale
+O que: Issue #<N> avisada sobre fechamento em 7 dias
+Refs: #<N>" >> kb/LOG.md
 ```
 Não adicione nenhum label — `status:blocked` tem semântica de conflito/risco e confunde outros workers.
 
@@ -153,17 +173,22 @@ o trabalho e publica após aprovação humana.
 
 **Modo normal — verificar threshold:**
 ```bash
-# Última tag
-LAST_RELEASE=$(gh release list --limit 1 --json tagName,publishedAt)
-LAST_DATE=$(echo $LAST_RELEASE | jq -r '.[0].publishedAt')
+# Última tag — com fallback para primeiro release
+LAST_RELEASE=$(gh release list --limit 1 --json tagName,publishedAt 2>/dev/null)
+if [ -z "$LAST_RELEASE" ] || [ "$LAST_RELEASE" = "[]" ]; then
+  LAST_DATE="1970-01-01T00:00:00Z"
+else
+  LAST_DATE=$(echo "$LAST_RELEASE" | jq -r '.[0].publishedAt // "1970-01-01T00:00:00Z"')
+fi
 
 # PRs mergeadas desde então
 PR_COUNT=$(gh pr list --state merged \
   --search "merged:>$LAST_DATE" \
-  --json number | jq length)
+  --json number 2>/dev/null | jq 'length // 0')
 
 # Dias desde o último release
-DAYS_SINCE=$(( ( $(date +%s) - $(date -d "$LAST_DATE" +%s) ) / 86400 ))
+LAST_EPOCH=$(date -d "$LAST_DATE" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%SZ" "$LAST_DATE" +%s 2>/dev/null || echo 0)
+DAYS_SINCE=$(( ( $(date +%s) - LAST_EPOCH ) / 86400 ))
 ```
 
 Dispara se **qualquer** condição for verdadeira:
@@ -237,7 +262,16 @@ A cada ciclo de 300s, verifique se a PR de release foi mergeada:
 gh pr view <N-release> --json state,mergedAt -q '.state'
 ```
 
-**Se ainda aberta** → aguarde (não faça nada).
+**Se ainda aberta** → verifique timeout de 72h:
+```bash
+PR_CREATED=$(gh pr view <N-release> --json createdAt -q '.createdAt')
+PR_EPOCH=$(date -d "$PR_CREATED" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%SZ" "$PR_CREATED" +%s 2>/dev/null || echo 0)
+HOURS_OPEN=$(( ( $(date +%s) - PR_EPOCH ) / 3600 ))
+if [ $HOURS_OPEN -ge 72 ]; then
+  gh pr comment <N-release> --body "⏰ PR de release aberta há ${HOURS_OPEN}h sem merge. @<owner> decisão necessária."
+  # Volta ao modo normal — tenta novamente no próximo ciclo
+fi
+```
 
 **Se mergeada** → execute o release:
 ```bash

@@ -125,8 +125,18 @@ gh pr list --state open \
 1. `gh issue comment <N> --body "claiming #<N> — worker:dev — $(date -u +%Y-%m-%dT%H:%M:%SZ)"`
 2. `gh issue edit <N> --add-assignee @me --add-label status:in-progress --remove-label status:ready`
 3. Aguarde 10s
-4. Reconfirme: você é o único assignee e primeiro "claiming" nos últimos 30s?
-   - Não → desfaça, escolha outra issue
+4. Reconfirme — verifique concorrência:
+   ```bash
+   THRESHOLD=$(date -u -d '30 seconds ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || \
+               date -u -v-30S +%Y-%m-%dT%H:%M:%SZ)
+   CLAIMING=$(gh issue view <N> --json comments \
+     -q "[.comments[] | select(.createdAt >= \"$THRESHOLD\") | select(.body | contains(\"claiming\"))] | length")
+   ```
+   Se `CLAIMING > 1` → não é o único:
+   ```bash
+   gh issue edit <N> --remove-label status:in-progress --remove-assignee @me
+   ```
+   Escolha outra issue.
 
 **Spawne subagente dev:**
 ```
@@ -224,9 +234,9 @@ Exclua: `status:blocked`, `status:in-progress`, `risk:high`, `risk:auth`, issues
 
 **Verificar limite de batch:**
 ```bash
-gh issue list --label "jules" --state open --json number | jq length
+JULES_COUNT=$(gh issue list --label "jules" --state open --json number 2>/dev/null | jq 'length // 0')
 ```
-Se ≥ 2 → aguarde antes de atribuir mais.
+Se `JULES_COUNT >= 2` → aguarde antes de atribuir mais.
 
 **PRs do Jules para monitorar:**
 ```bash
@@ -293,6 +303,19 @@ Aguardando QA comportamental (worker:qa) antes do merge.
 **Se problemas:**
 - `gh pr review <N> --request-changes --body "<problemas>"`
 - Jules vai corrigir — aguarde próximo ciclo
+
+**Hard stop — loop de revisão:** rastreie quantas vezes a mesma PR recebeu `veredicto: "problemas"` lendo os comentários de revisão:
+```bash
+REVIEW_COUNT=$(gh pr view <N> --json comments \
+  -q '[.comments[] | select(.body | contains("worker:dev-jules")) | select(.body | contains("problemas"))] | length')
+```
+Se `REVIEW_COUNT >= 3` → aplique `risk:high`, comente com `@<owner>`, escreva em `kb/inbox/human/`. Não revisar novamente.
+
+**Falha do Jules (issue travada em `in-progress`):** se a issue tem label `jules` + `status:in-progress` mas nenhuma PR foi aberta nos últimos 2 × sleep_interval:
+```bash
+gh issue edit <N> --remove-label "jules,status:in-progress" --add-label "status:ready"
+gh issue comment <N> --body "## ⚠️ Jules não respondeu\nIssue retornada para status:ready após timeout."
+```
 
 ### Ação — devolução de PR bloqueada pelo QA/UX
 
@@ -426,13 +449,23 @@ Para cada PR aprovada que toca arquivos de UI (`*.tsx`, `*.vue`, `*.css`,
 `pages/`, `components/`, `app/`, `views/`):
 
 ```bash
-UX_PRESENCE=$(cat kb/presence/ui-ux.json 2>/dev/null)
-# calcule: now - last_cycle > 2 × sleep_interval = offline
+UI_UX_ONLINE=false
+PRESENCE_FILE="kb/presence/ui-ux.json"
+if [ -f "$PRESENCE_FILE" ]; then
+  LAST_CYCLE=$(jq -r '.last_cycle // empty' "$PRESENCE_FILE" 2>/dev/null)
+  SLEEP_INTERVAL=$(jq -r '.sleep_interval // 300' "$PRESENCE_FILE" 2>/dev/null)
+  if [ -n "$LAST_CYCLE" ]; then
+    LAST_EPOCH=$(date -d "$LAST_CYCLE" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%SZ" "$LAST_CYCLE" +%s 2>/dev/null || echo 0)
+    NOW=$(date +%s)
+    OFFLINE_THRESHOLD=$((2 * SLEEP_INTERVAL))
+    [ $((NOW - LAST_EPOCH)) -le $OFFLINE_THRESHOLD ] && UI_UX_ONLINE=true
+  fi
+fi
 ```
 
-- `ui-ux` **online** + sem `status:ux-approved` → aguarde (não mergeia)
-- `ui-ux` **offline** → mergeia, comente: `ui-ux offline — merged sem revisão UX`
-- `ui-ux` **online** + tem `status:ux-approved` → mergeia normalmente
+- `UI_UX_ONLINE=true` + sem `status:ux-approved` → aguarde (não mergeia)
+- `UI_UX_ONLINE=false` → mergeia, comente: `ui-ux offline — merged sem revisão UX`
+- `UI_UX_ONLINE=true` + tem `status:ux-approved` → mergeia normalmente
 
 ### Ação — checklist antes de mergear
 

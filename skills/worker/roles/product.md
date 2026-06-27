@@ -20,12 +20,12 @@ gh issue list --state open \
   --label "status:needs-scope" \
   --json number,title,body,labels,comments
 ```
-Também processa issues abertas **sem nenhuma label**, mas apenas se não houver comentário de "claiming" do triage nos últimos 5 minutos:
+Também processa issues abertas **sem nenhuma label**, mas apenas se triage ainda não passou por ela. Como triage sempre aplica pelo menos uma label de área antes de sair, basta verificar:
 ```bash
-# Cheque o último comentário da issue antes de processar
-gh issue view <N> --json comments -q '.comments[-1].body' | grep -q "worker:triage" && continue
+LABELS=$(gh issue view <N> --json labels -q '.labels | length')
+[ "$LABELS" -gt 0 ] && continue  # triage já processou — pule
 ```
-Isso evita que pm e triage processem a mesma issue sem label ao mesmo tempo.
+Isso garante que pm e triage nunca processem a mesma issue ao mesmo tempo.
 
 ### Ação
 

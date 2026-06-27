@@ -169,9 +169,15 @@ aplique label de bloqueio, comente no GitHub, escreva no LOG, passe para o próx
 1. Comente: `claiming #<N> — worker:<papel> — <ISO timestamp>`
 2. Aplique label de `in-progress` / assignee
 3. Aguarde 10s
-4. Reconfirme: você é o único claiming nos últimos 30s?
-   - Sim → prossiga
-   - Não → desfaça, escolha outro item
+4. Reconfirme — conte claims concorrentes nos últimos 30s:
+   ```bash
+   THRESHOLD=$(date -u -d '30 seconds ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || \
+               date -u -v-30S +%Y-%m-%dT%H:%M:%SZ)
+   CLAIMING=$(gh issue view <N> --json comments \
+     -q "[.comments[] | select(.createdAt >= \"$THRESHOLD\") | select(.body | contains(\"claiming\"))] | length")
+   ```
+   - `CLAIMING = 1` (só você) → prossiga
+   - `CLAIMING > 1` → desfaça labels/assignee, escolha outro item
 
 **Orquestrador nunca faz trabalho pesado.** Leitura de código, implementação,
 análise de diff, execução de testes — tudo vai para subagentes.
