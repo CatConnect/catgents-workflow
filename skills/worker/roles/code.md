@@ -18,7 +18,19 @@ que os outros cats conseguem executar sem perguntar nada.
 gh issue list --state open --limit 50 \
   --json number,title,labels,body,comments
 ```
-Processe issues sem label de área OU sem label de status.
+Processe issues que se enquadrem em **qualquer** uma dessas condições:
+- Sem nenhuma label (completamente não classificada)
+- Com label de área (`area:*`) mas sem nenhuma label de status (`status:*`) — labels parciais também são responsabilidade do triage
+- Com `status:needs-scope` sem nenhum comentário de pm (triage classificou mas pm ainda não viu)
+
+```bash
+# Detectar labels parciais: tem area mas não tem status
+gh issue list --state open --limit 50 --json number,labels \
+  | jq '[.[] | select(
+      (.labels | map(.name) | any(startswith("area:"))) and
+      (.labels | map(.name) | any(startswith("status:")) | not)
+    )]'
+```
 
 ### Ação
 
@@ -470,6 +482,14 @@ Retorne:
 Antes de retornar: verifique se o JSON é válido e todos os campos estão presentes. Campos ausentes → null, nunca omita.
 ```
 
+**Verificar se PR tem issue vinculada:**
+```bash
+HAS_ISSUE=$(gh pr view <N> --json body -q '.body' | grep -cE 'Closes #|Fixes #|Resolves #')
+if [ "$HAS_ISSUE" -eq 0 ]; then
+  gh pr comment <N> --body "## ⚠️ PR sem issue vinculada\nAdicione 'Closes #N' no body da PR antes do merge. QA prosseguindo com revisão técnica."
+fi
+```
+
 **Antes de aprovar — verifique mergeabilidade e CI:**
 ```bash
 gh pr view <N> --json mergeable,statusCheckRollup
@@ -522,12 +542,40 @@ desbloqueia conflitos após cada merge, e monitora invariantes de estado.
 **SLEEP:** 90s | **SLEEP_MAX:** 360s | **LOCK:** não (merges são atômicos)
 
 ### Filtro
+
+O reviewer executa **2 varreduras por ciclo, ambas obrigatórias:**
+
+**Varredura 1 — PRs prontas para merge:**
 ```bash
+echo "[worker:reviewer] varredura 1/2 — qa-approved: iniciando"
 gh pr list --state open \
   --label "status:qa-approved" \
   --json number,title,body,labels,mergeable,statusCheckRollup,files
 ```
-Processe **todas** as PRs aprovadas encontradas — merges são atômicos e independentes entre si.
+
+**Varredura 2 — PRs sem labels (reconciliação):**
+```bash
+echo "[worker:reviewer] varredura 2/2 — PRs sem labels: iniciando"
+gh pr list --state open --json number,title,labels,createdAt \
+  | jq '[.[] | select(.labels | length == 0)]'
+```
+Para cada PR sem labels:
+```bash
+# Checar se tem issue vinculada no body
+HAS_ISSUE=$(gh pr view <N> --json body -q '.body' | grep -cE 'Closes #|Fixes #|Resolves #')
+if [ "$HAS_ISSUE" -gt 0 ]; then
+  # PR tem issue vinculada mas sem label — aplicar needs-review para QA processar
+  gh pr edit <N> --add-label "status:needs-review"
+  gh pr comment <N> --body "## 🏷️ Labels aplicadas pelo reviewer\nPR sem labels detectada. Aplicado status:needs-review para processamento pelo QA."
+else
+  # PR sem issue vinculada — alertar
+  gh pr comment <N> --body "## ⚠️ PR sem issue vinculada\nEsta PR não referencia nenhuma issue (Closes #N). Adicione a referência ou esta PR não será mergeada."
+  gh pr edit <N> --add-label "status:blocked"
+fi
+```
+echo "[worker:reviewer] varredura 2/2 — PRs sem labels: <N tratadas>"
+
+Processe **todas** as PRs aprovadas encontradas na varredura 1 — merges são atômicos e independentes entre si.
 
 ### Ação — verificar presença do ui-ux para PRs com UI
 
@@ -549,9 +597,20 @@ if [ -f "$PRESENCE_FILE" ]; then
 fi
 ```
 
-- `UI_UX_ONLINE=true` + sem `status:ux-approved` → aguarde (não mergeia)
+- `UI_UX_ONLINE=true` + sem `status:ux-approved` → aguarde **máximo 2 ciclos** (≈180s). Se após 2 ciclos ainda sem aprovação → mergeia com comentário `ui-ux demorou mais de 2 ciclos — merged sem revisão UX`
 - `UI_UX_ONLINE=false` → mergeia, comente: `ui-ux offline — merged sem revisão UX`
 - `UI_UX_ONLINE=true` + tem `status:ux-approved` → mergeia normalmente
+
+Para rastrear ciclos de espera, use o LOG:
+```bash
+WAIT_COUNT=$(grep "aguardando ux-approval PR #<N>" kb/LOG.md 2>/dev/null | wc -l)
+if [ "$WAIT_COUNT" -ge 2 ]; then
+  # Timeout — mergeia sem ux-approval
+  BYPASS_UX=true
+fi
+# Se ainda aguardando:
+echo "## $(date +%Y-%m-%d) · worker:reviewer · aguardando ux-approval PR #<N>" >> kb/LOG.md
+```
 
 ### Ação — checklist antes de mergear
 
@@ -586,10 +645,11 @@ echo "[worker:reviewer] ✓ merge PR #<N> — issues fechadas: $CLOSED_ISSUES"
 
 **Se não ok — roteie pelo motivo:**
 
-- **CI falhou** (`gh pr checks <N>` com status failure/error):
+- **CI falhou** após qa-approved (push adicional quebrou o CI):
   ```bash
   gh pr edit <N> --remove-label "status:qa-approved" --add-label "status:qa-blocked"
-  gh pr comment <N> --body "## ❌ CI falhou\n$(gh pr checks <N>)\nCorrija e faça push na mesma branch."
+  gh pr comment <N> --body "## ❌ CI quebrou após qa-approved\nO CI falhou após a aprovação do QA — provavelmente um push adicional quebrou algo.\n$(gh pr checks <N>)\nCorrija o CI e solicite nova revisão de QA com 'status:needs-review'."
+  # Nota: dev corrige CI → aplica needs-review → QA revisa novamente do zero
   ```
 
 - **Conflito de merge** (`mergeable = CONFLICTING`):

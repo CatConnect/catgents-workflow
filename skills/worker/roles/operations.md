@@ -62,6 +62,25 @@ Se `WORKER_DEAD=true` → remova `status:in-progress`, aplique `status:ready`, c
 Worker assignado não responde. Issue retornada para status:ready.
 ```
 
+**`status:in-progress` com PR já mergeada (issue não fechou automaticamente):**
+```bash
+gh issue list --state open --label "status:in-progress" \
+  --json number,title,body,comments
+```
+Para cada issue `in-progress`, verifique se alguma PR mergeada a menciona:
+```bash
+# Busca PRs mergeadas que referenciam esta issue
+MERGED_PR=$(gh pr list --state merged \
+  --search "Closes #<N> OR Fixes #<N> OR Resolves #<N>" \
+  --json number,state -q '.[0].number // empty' 2>/dev/null)
+if [ -n "$MERGED_PR" ]; then
+  gh issue close <N> --comment "## ✅ Fechada pelo stale
+PR #$MERGED_PR foi mergeada mas esta issue não foi fechada automaticamente.
+Referência 'Closes #<N>' na PR não funcionou corretamente."
+  echo "[worker:stale] issue #<N> fechada — PR #$MERGED_PR já mergeada"
+fi
+```
+
 **`status:blocked` + `risk:conflict` com PR já mergeada:**
 ```bash
 gh issue list --state open --label "status:blocked,risk:conflict" \
@@ -116,6 +135,30 @@ Esta PR está com status:qa-blocked sem correção. Dev deve investigar."
 | `needs-review` sem QA | 4h | comente na PR alertando que QA deve processar |
 
 Para cada estado com timeout expirado, apenas comente — não altere labels.
+
+**Backlog de discovery crescendo (threshold: 10+ issues `needs-scope`):**
+```bash
+DISCOVERY_BACKLOG=$(gh issue list --state open --label "status:needs-scope" \
+  --json number -q 'length' 2>/dev/null)
+if [ "$DISCOVERY_BACKLOG" -ge 10 ]; then
+  # Só alerta se não alertou nos últimos 7 dias
+  LAST_ALERT=$(grep "discovery-backlog-alert" kb/LOG.md 2>/dev/null | tail -1 | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}')
+  DAYS_SINCE_ALERT=999
+  if [ -n "$LAST_ALERT" ]; then
+    LAST_EPOCH=$(date -d "$LAST_ALERT" +%s 2>/dev/null || echo 0)
+    DAYS_SINCE_ALERT=$(( ( $(date +%s) - LAST_EPOCH ) / 86400 ))
+  fi
+  if [ "$DAYS_SINCE_ALERT" -ge 7 ]; then
+    MSG="kb/inbox/human/msg-$(date +%s)-stale.json"
+    cat > "${MSG}.tmp" << EOF
+{"from":"stale","to":"human","type":"alert","payload":{"message":"Backlog de discovery acumulou $DISCOVERY_BACKLOG issues needs-scope sem processamento pelo pm","count":$DISCOVERY_BACKLOG},"sent_at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}
+EOF
+    mv "${MSG}.tmp" "${MSG}"
+    echo "## $(date +%Y-%m-%d) · worker:stale · discovery-backlog-alert · #backlog
+O que: $DISCOVERY_BACKLOG issues needs-scope acumuladas sem processamento" >> kb/LOG.md
+  fi
+fi
+```
 
 ---
 
