@@ -192,6 +192,27 @@ A escrita via `tmp + mv` é atômica — sem race condition.
 
 ### Fase 3 — TRABALHO
 
+**PRÉ-CONDIÇÃO OBRIGATÓRIA para workers `dev` e `dev-jules` — execute ANTES de ler roles/<arquivo>.md:**
+
+```bash
+# Rode estes comandos agora. Não pule. Não leia o filtro antes de ter o resultado.
+BLOCKED_QA=$(gh pr list --state open --label "status:qa-blocked" --author @me --json number,title 2>/dev/null | jq 'length // 0')
+BLOCKED_UX=$(gh pr list --state open --label "status:ux-blocked" --author @me --json number,title 2>/dev/null | jq 'length // 0')
+CI_FAILING=$(gh pr list --state open --label "status:needs-review" --author @me \
+  --json number,title,statusCheckRollup 2>/dev/null \
+  | jq '[.[] | select(.statusCheckRollup != null and (.statusCheckRollup[] | .conclusion == "FAILURE" or .conclusion == "TIMED_OUT"))] | length // 0')
+TOTAL_BLOCKED=$((BLOCKED_QA + BLOCKED_UX + CI_FAILING))
+echo "[worker:dev] gate filtro 1 — PRs com problema: $TOTAL_BLOCKED"
+```
+
+**Se `TOTAL_BLOCKED > 0`:** vá direto para "Ação — corrigir PR bloqueada" em `roles/code.md`. **Não execute o Filtro 2. Não liste issues. Não leia mais nada antes de corrigir as PRs.**
+
+**Se `TOTAL_BLOCKED = 0`:** prossiga normalmente lendo `roles/<arquivo>.md`.
+
+Esta pré-condição existe porque o dev acumula PRs bloqueadas enquanto busca issues novas — o que trava o pipeline inteiro.
+
+---
+
 Definida em `roles/<arquivo>.md` para cada papel.
 
 **Protocolo de comunicação terminal (obrigatório para todos workers):**
