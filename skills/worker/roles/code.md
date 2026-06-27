@@ -82,18 +82,9 @@ Também corrige PRs que QA ou UX bloquearam.
 
 ### Filtro
 
-O dev executa **2 filtros por ciclo, ambos obrigatórios**. Processar um não cancela o outro — rode os dois antes de dormir.
+O dev executa **2 filtros por ciclo em ordem de prioridade**. PRs bloqueadas têm prioridade absoluta — só pegue issue nova se não houver nenhuma PR bloqueada sua.
 
-**Filtro 1 — Issues prontas:**
-```bash
-gh issue list --state open \
-  --label "status:ready" \
-  --json number,title,labels,assignees,body
-```
-Exclua: `status:blocked`, `status:in-progress`, `risk:conflict`, `risk:high`.
-Pegue **no máximo 1 issue por ciclo** (lock exclusivo — não processe múltiplas em paralelo).
-
-**Filtro 2 — PRs bloqueadas (suas):**
+**Filtro 1 (PRIORIDADE) — PRs bloqueadas (suas):**
 ```bash
 gh pr list --state open \
   --label "status:qa-blocked" \
@@ -105,7 +96,17 @@ gh pr list --state open \
   --author @me \
   --json number,title,body,headRefName,author
 ```
-Processe **todas** as PRs bloqueadas suas encontradas — não há lock aqui, são correções independentes.
+Processe **todas** as PRs bloqueadas suas antes de qualquer outra coisa.
+Se encontrou PRs bloqueadas → corrija-as e **não pegue issue nova neste ciclo**.
+
+**Filtro 2 — Issues prontas (só se Filtro 1 estiver vazio):**
+```bash
+gh issue list --state open \
+  --label "status:ready" \
+  --json number,title,labels,assignees,body
+```
+Exclua: `status:blocked`, `status:in-progress`, `risk:conflict`, `risk:high`.
+Pegue **no máximo 1 issue por ciclo** (lock exclusivo).
 
 ### Ação — implementar issue
 
@@ -233,9 +234,25 @@ Instale em: https://jules.google.com e adicione ao repo."; exit 1; }
 
 ### Filtro
 
-O dev-jules executa **3 filtros por ciclo, todos obrigatórios**. Processar um não cancela os outros.
+O dev-jules executa **3 filtros por ciclo em ordem de prioridade**. PRs bloqueadas têm prioridade — só atribua issue nova se não houver nenhuma bloqueada pendente.
 
-**Filtro 1 — Issues prontas para Jules:**
+**Filtro 1 (PRIORIDADE) — PRs do Jules bloqueadas:**
+```bash
+gh pr list --state open --label "status:qa-blocked" --json number,title,body
+gh pr list --state open --label "status:ux-blocked" --json number,title,body
+```
+Filtre as que vieram de issues com label `jules`.
+Processe **todas** as bloqueadas antes de qualquer outra coisa.
+Se encontrou bloqueadas → devolva ao Jules e **não atribua issue nova neste ciclo**.
+
+**Filtro 2 — PRs do Jules para monitorar:**
+```bash
+gh pr list --state open --json number,title,body,labels,headRefName
+```
+Identifique PRs cujo body menciona `Closes #<N>` de issues com label `jules`.
+Processe **todas** as PRs do Jules encontradas.
+
+**Filtro 3 — Issues prontas para Jules (só se Filtros 1 e 2 não geraram ação):**
 ```bash
 gh issue list --state open \
   --label "status:ready" \
@@ -247,22 +264,7 @@ Exclua: `status:blocked`, `status:in-progress`, `risk:high`, `risk:auth`, issues
 ```bash
 JULES_COUNT=$(gh issue list --label "jules" --state open --json number 2>/dev/null | jq 'length // 0')
 ```
-Se `JULES_COUNT >= 2` → não atribua novas, mas continue para os filtros 2 e 3.
-
-**Filtro 2 — PRs do Jules para monitorar:**
-```bash
-gh pr list --state open --json number,title,body,labels,headRefName
-```
-Identifique PRs cujo body menciona `Closes #<N>` de issues com label `jules`.
-Processe **todas** as PRs do Jules encontradas.
-
-**Filtro 3 — PRs do Jules bloqueadas:**
-```bash
-gh pr list --state open --label "status:qa-blocked" --json number,title,body
-gh pr list --state open --label "status:ux-blocked" --json number,title,body
-```
-Filtre as que vieram de issues com label `jules`.
-Processe **todas** as bloqueadas encontradas.
+Se `JULES_COUNT >= 2` → não atribua novas neste ciclo.
 
 ### Ação — atribuir ao Jules
 
