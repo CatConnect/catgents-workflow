@@ -82,34 +82,36 @@ Também corrige PRs que QA ou UX bloquearam.
 
 ### Filtro
 
-O dev executa **2 filtros por ciclo em ordem de prioridade**. PRs bloqueadas têm prioridade absoluta — só pegue issue nova se não houver nenhuma PR bloqueada sua.
+**EXECUTE ESTES COMANDOS AGORA — ANTES DE QUALQUER OUTRA COISA:**
 
-**Filtro 1 (PRIORIDADE) — PRs suas com problema:**
 ```bash
-# qa-blocked ou ux-blocked
-gh pr list --state open --label "status:qa-blocked" --author @me \
-  --json number,title,body,headRefName,statusCheckRollup
-gh pr list --state open --label "status:ux-blocked" --author @me \
-  --json number,title,body,headRefName,statusCheckRollup
+# GATE OBRIGATÓRIA — rode antes de olhar qualquer issue
+BLOCKED_QA=$(gh pr list --state open --label "status:qa-blocked" --author @me --json number,title,headRefName 2>/dev/null)
+BLOCKED_UX=$(gh pr list --state open --label "status:ux-blocked" --author @me --json number,title,headRefName 2>/dev/null)
+CI_FAILING=$(gh pr list --state open --label "status:needs-review" --author @me \
+  --json number,title,headRefName,statusCheckRollup 2>/dev/null \
+  | jq '[.[] | select(.statusCheckRollup != null and (.statusCheckRollup[] | .conclusion == "FAILURE" or .conclusion == "TIMED_OUT"))]')
 
-# needs-review com CI falhando (QA ainda não processou, mas CI já falhou)
-gh pr list --state open --label "status:needs-review" --author @me \
-  --json number,title,body,headRefName,statusCheckRollup \
-  | jq '[.[] | select(.statusCheckRollup[]?.conclusion == "FAILURE" or .statusCheckRollup[]?.conclusion == "TIMED_OUT")]'
+TOTAL_BLOCKED=$(echo "$BLOCKED_QA $BLOCKED_UX $CI_FAILING" | jq -s '[.[][] ] | length' 2>/dev/null || echo 0)
+echo "[worker:dev] filtro 1/2 — PRs com problema: $TOTAL_BLOCKED"
 ```
-Processe **todas** as PRs com problema antes de qualquer outra coisa.
-Se encontrou qualquer PR sua com CI falhando ou label de bloqueio → corrija-as e **não pegue issue nova neste ciclo**.
 
-**Regra de ouro: se qualquer PR sua está aberta com CI vermelho → você não abre nova PR.**
+**Se `TOTAL_BLOCKED > 0`:**
+- Corrija **todas** as PRs com problema (veja "Ação — corrigir PR bloqueada" abaixo)
+- **PARE AQUI. Não execute o Filtro 2. Não pegue issue nova. Vá para Fase 4 → Fase 5.**
 
-**Filtro 2 — Issues prontas (só se Filtro 1 estiver vazio):**
+**Só execute o Filtro 2 se `TOTAL_BLOCKED = 0`:**
+
 ```bash
+echo "[worker:dev] filtro 2/2 — issues prontas: buscando..."
 gh issue list --state open \
   --label "status:ready" \
   --json number,title,labels,assignees,body
 ```
 Exclua: `status:blocked`, `status:in-progress`, `risk:conflict`, `risk:high`.
 Pegue **no máximo 1 issue por ciclo** (lock exclusivo).
+
+**Nunca pule o Filtro 1. Nunca execute o Filtro 2 sem confirmar que Filtro 1 = 0.**
 
 ### Ação — implementar issue
 
