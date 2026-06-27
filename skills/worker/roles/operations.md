@@ -16,7 +16,19 @@ do sistema, fecha issues/PRs abandonadas e mantém o board saudável.
 
 ### Filtro + Ação
 
-O stale opera em **6 varreduras por ciclo, todas obrigatórias**. Encontrar trabalho em uma varredura **não encerra o ciclo** — continue até completar todas as 6 antes de dormir.
+O stale opera em **6 varreduras por ciclo, todas obrigatórias**.
+
+**ANTES DE DORMIR**, confirme no log do terminal que todas foram executadas:
+```
+[worker:stale] varredura 1/6 — estados inválidos: <N achados>
+[worker:stale] varredura 2/6 — timeouts por estado: <N achados>
+[worker:stale] varredura 3/6 — issues abandonadas: <N achados>
+[worker:stale] varredura 4/6 — consolidação de signals: <N consolidados>
+[worker:stale] varredura 5/6 — PRs abandonadas: <N achados>
+[worker:stale] varredura 6/6 — branches órfãs: <N deletadas>
+```
+Se uma linha estiver faltando → a varredura não rodou. Volte e execute-a.
+Encontrar trabalho em uma varredura **não encerra o ciclo**.
 
 ---
 
