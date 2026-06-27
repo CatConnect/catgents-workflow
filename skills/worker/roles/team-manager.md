@@ -216,7 +216,7 @@ AUTHOR=$(gh pr view <N> --json author -q '.author.login')
 
 # Verifica se já tem correção após o comentário de QA
 QA_BLOCKED_AT=$(gh pr view <N> --json comments \
-  -q '[.comments[] | select(.body | contains("QA bloqueado") or contains("❌ QA"))] | last | .createdAt // empty')
+  -q '[.comments[] | select(.body | contains("❌ QA bloqueado"))] | last | .createdAt // empty')
 LAST_COMMIT_AT=$(gh pr view <N> --json commits \
   -q '.commits | last | .committedDate // empty')
 

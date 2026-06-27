@@ -89,7 +89,7 @@ if [ "$NEEDS_SCOPE_COUNT" -ge 10 ]; then
     gh issue create \
       --title "⚠️ Backlog de needs-scope alto: $NEEDS_SCOPE_COUNT issues aguardando spec" \
       --body "## Alerta do scout\n\nHá $NEEDS_SCOPE_COUNT issues com status:needs-scope sem spec escrita.\nO team-manager deve priorizar a escrita de specs para desbloquear o pipeline." \
-      --label "status:needs-scope,area:docs"
+      --label "area:docs,risk:low"
     echo "[worker:scout] ✓ issue de alerta criada — backlog: $NEEDS_SCOPE_COUNT"
   fi
 fi

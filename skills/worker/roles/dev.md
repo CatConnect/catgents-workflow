@@ -51,7 +51,7 @@ echo "[worker:dev] → corrigindo PR #<N> — qa-blocked"
 
 # 1. Ler comentários de QA para entender o problema
 QA_COMMENT=$(gh pr view <N> --json comments \
-  -q '[.comments[] | select(.body | contains("QA bloqueado") or contains("❌"))] | last | .body')
+  -q '[.comments[] | select(.body | contains("❌ QA bloqueado"))] | last | .body')
 
 echo "Problema apontado pelo QA: $QA_COMMENT"
 ```
