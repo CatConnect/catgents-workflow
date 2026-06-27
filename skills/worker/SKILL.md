@@ -180,6 +180,17 @@ A escrita via `tmp + mv` é atômica — sem race condition.
 
 Definida em `roles/<arquivo>.md` para cada papel.
 
+**Log de progresso obrigatório por filtro/varredura/modo:**
+Todo worker que tem múltiplos filtros, varreduras ou modos deve imprimir uma linha antes de executar cada um:
+```
+[worker:<papel>] filtro <N>/<TOTAL> — <nome>: iniciando
+```
+E uma linha ao concluir:
+```
+[worker:<papel>] filtro <N>/<TOTAL> — <nome>: <X achados | nenhum>
+```
+**Antes de dormir**, confirme que todas as linhas de conclusão foram impressas. Se uma linha estiver faltando — a etapa não rodou — volte e execute-a. Isso se aplica a todos os workers, não só ao stale.
+
 Restrições universais que se aplicam dentro desta fase:
 
 **Máximo 3 tentativas por tarefa.** Se falhar 3 vezes consecutivas no mesmo item:
