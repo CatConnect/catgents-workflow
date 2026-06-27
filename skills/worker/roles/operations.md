@@ -244,21 +244,26 @@ for BRANCH in $ALL_BRANCHES; do
   LAST_EPOCH=$(date -d "$LAST_COMMIT" +%s 2>/dev/null || date -j -f "%Y-%m-%d %H:%M:%S %z" "$LAST_COMMIT" +%s 2>/dev/null || echo 0)
   DAYS_OLD=$(( ( $(date +%s) - LAST_EPOCH ) / 86400 ))
 
-  if [ $DAYS_OLD -ge 30 ]; then
-    # Verifique se a PR associada foi mergeada ou fechada
-    PR_STATE=$(gh pr list --state all --head "$BRANCH" --json state -q '.[0].state // "NONE"')
+  # Verifique o estado da PR associada
+  PR_STATE=$(gh pr list --state all --head "$BRANCH" --json state -q '.[0].state // "NONE"')
 
-    if [ "$PR_STATE" = "MERGED" ] || [ "$PR_STATE" = "CLOSED" ] || [ "$PR_STATE" = "NONE" ]; then
-      git push origin --delete "$BRANCH"
-      echo "## $(date +%Y-%m-%d) · worker:stale · branch-deletada · #cleanup
-O que: Branch $BRANCH deletada (${DAYS_OLD}d sem commit, PR: $PR_STATE)
+  # Thresholds diferenciados por estado:
+  # - PR MERGED ou CLOSED → delete após 7 dias (branch já cumpriu seu papel)
+  # - PR NONE (branch órfã sem PR) → delete após 30 dias
+  THRESHOLD=30
+  [ "$PR_STATE" = "MERGED" ] || [ "$PR_STATE" = "CLOSED" ] && THRESHOLD=7
+
+  if [ $DAYS_OLD -ge $THRESHOLD ]; then
+    git push origin --delete "$BRANCH"
+    echo "## $(date +%Y-%m-%d) · worker:stale · branch-deletada · #cleanup
+O que: Branch $BRANCH deletada (${DAYS_OLD}d, PR: $PR_STATE, threshold: ${THRESHOLD}d)
 Refs: branch/$BRANCH" >> kb/LOG.md
-    fi
   fi
 done
 ```
 
-**Nunca deletar:** `main`, `master`, branches com PR aberta, branches com menos de 30 dias.
+**Nunca deletar:** `main`, `master`, branches com PR aberta.
+**Thresholds:** PR MERGED/CLOSED → 7 dias | branch sem PR → 30 dias.
 
 ---
 
