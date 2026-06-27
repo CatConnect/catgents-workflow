@@ -87,12 +87,11 @@ Retorne:
 
 Após receber retorno:
 ```bash
-gh pr edit <N> \
-  --remove-label "status:qa-blocked" \
-  --add-label "status:needs-review"
+# Dev NÃO muda labels — só reporta o que fez.
+# O team-manager detecta o novo commit e reatribui QA no próximo ciclo.
 gh pr comment <N> \
-  --body "## 🔧 Correções aplicadas\n\n**O que foi corrigido:**\n$(echo $CORRECOES | sed 's/,/\n- /g')\n\nPR pronta para nova revisão de QA."
-echo "[worker:dev] ✓ PR #<N> corrigida → status:needs-review"
+  --body "## 🔧 Correções aplicadas\n\n**O que foi corrigido:**\n$(echo $CORRECOES | sed 's/,/\n- /g')\n\nAguardando reatribuição de QA pelo team-manager."
+echo "[worker:dev] ✓ PR #<N> — correções pushadas, aguardando team-manager"
 ```
 
 ### Prioridade 2 — Implementar issue assignada

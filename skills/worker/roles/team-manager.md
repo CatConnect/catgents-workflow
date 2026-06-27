@@ -13,7 +13,8 @@ Ele nunca implementa, nunca revisa código, nunca mergeia — só orquestra.
 ```bash
 # Estado completo do repo
 REPO=$(gh repo view --json nameWithOwner -q '.nameWithOwner')
-echo "[worker:team-manager] lendo estado de $REPO"
+GH_USER=$(gh api user -q '.login')
+echo "[worker:team-manager] lendo estado de $REPO — usuário: $GH_USER"
 
 # Issues sem label de status (não classificadas)
 UNCLASSIFIED=$(gh issue list --state open --json number,title,labels \
@@ -103,7 +104,17 @@ gh issue comment <N> \
 
 ### Ação 2 — Escrever spec para issues needs-scope
 
-Para cada issue em `NEEDS_SCOPE` sem comentário de spec (sem "## Spec" no histórico):
+Para cada issue em `NEEDS_SCOPE`, verifique antes de spawnar:
+```bash
+HAS_SPEC=$(gh issue view <N> --json comments \
+  -q '[.comments[] | select(.body | contains("## Spec"))] | length')
+if [ "$HAS_SPEC" -gt 0 ]; then
+  echo "[worker:team-manager] #<N> já tem spec — pulando"
+  continue
+fi
+```
+
+Somente se `HAS_SPEC = 0`:
 
 ```
 Você é um subagente de produto. NÃO pergunte — escreva a spec e retorne JSON.
@@ -148,11 +159,11 @@ Para cada issue em `READY_UNASSIGNED` (máx 1 por ciclo para não sobrecarregar)
 ```bash
 # Verifica se dev já tem issue em andamento
 DEV_LOAD=$(gh issue list --state open --label "status:in-progress" \
-  --assignee vhsmdev --json number | jq length)
+  --assignee "$GH_USER" --json number | jq length)
 
 if [ "$DEV_LOAD" -lt 2 ]; then
   gh issue edit <N> \
-    --add-assignee vhsmdev \
+    --add-assignee "$GH_USER" \
     --add-label "status:in-progress" \
     --remove-label "status:ready"
   gh issue comment <N> \
@@ -183,7 +194,7 @@ echo "[worker:team-manager] ✓ PR #<N> → status:needs-review"
 
 Para cada PR em `PRS_NEEDS_QA`:
 ```bash
-gh pr edit <N> --add-assignee vhsmdev  # ou usuário do qa worker
+gh pr edit <N> --add-assignee "$GH_USER"
 gh pr comment <N> --body "## 🔍 Atribuído para QA pelo team-manager"
 echo "[worker:team-manager] ✓ PR #<N> → qa assignado"
 ```
@@ -192,20 +203,38 @@ echo "[worker:team-manager] ✓ PR #<N> → qa assignado"
 
 Para cada PR em `PRS_NEEDS_REVIEW`:
 ```bash
-gh pr edit <N> --add-assignee vhsmdev  # ou usuário do reviewer
+gh pr edit <N> --add-assignee "$GH_USER"
 gh pr comment <N> --body "## ✅ QA aprovado — atribuído para merge pelo team-manager"
 echo "[worker:team-manager] ✓ PR #<N> → reviewer assignado"
 ```
 
-### Ação 7 — Reatribuir dev para PRs qa-blocked
+### Ação 7 — Gerenciar PRs qa-blocked
 
-Para cada PR em `PRS_QA_BLOCKED`:
+Para cada PR `qa-blocked`:
+
 ```bash
-# Atribui de volta ao autor original da PR
 AUTHOR=$(gh pr view <N> --json author -q '.author.login')
-gh pr edit <N> --add-assignee "$AUTHOR"
-gh pr comment <N> --body "## 🔄 Retornado para correção pelo team-manager\n\n@$AUTHOR veja os comentários de QA acima e corrija."
-echo "[worker:team-manager] ✓ PR #<N> → $AUTHOR para corrigir qa-blocked"
+
+# Verifica se já tem correção após o comentário de QA
+QA_BLOCKED_AT=$(gh pr view <N> --json comments \
+  -q '[.comments[] | select(.body | contains("QA bloqueado") or contains("❌ QA"))] | last | .createdAt // empty')
+LAST_COMMIT_AT=$(gh pr view <N> --json commits \
+  -q '.commits | last | .committedDate // empty')
+
+if [ -n "$QA_BLOCKED_AT" ] && [ -n "$LAST_COMMIT_AT" ] && [[ "$LAST_COMMIT_AT" > "$QA_BLOCKED_AT" ]]; then
+  # Dev já corrigiu — promover para needs-review e reatribuir QA
+  gh pr edit <N> \
+    --remove-label "status:qa-blocked" \
+    --add-label "status:needs-review" \
+    --add-assignee "$GH_USER"
+  gh pr comment <N> --body "## 🔍 Reatribuído para QA pelo team-manager\n\nCorreção detectada após bloqueio. Nova revisão de QA iniciada."
+  echo "[worker:team-manager] ✓ PR #<N> → correção detectada, reatribuído para QA"
+else
+  # Dev ainda não corrigiu — atribuir dev se sem assignee
+  gh pr edit <N> --add-assignee "$AUTHOR"
+  gh pr comment <N> --body "## 🔄 Retornado para correção pelo team-manager\n\n@$AUTHOR veja os comentários de QA acima e corrija."
+  echo "[worker:team-manager] ✓ PR #<N> → $AUTHOR para corrigir qa-blocked"
+fi
 ```
 
 ### Ação 8 — Detectar e corrigir estados inválidos

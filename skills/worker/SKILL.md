@@ -56,6 +56,13 @@ Crie apenas as ausentes:
 | Status | `e4e669` | `status:needs-scope` `status:ready` `status:in-progress` `status:blocked` `status:needs-review` `status:qa-approved` `status:qa-blocked` |
 | Risco | `d93f0b` | `risk:low` `risk:high` `risk:conflict` `risk:migration` `risk:auth` |
 
+### 0.2b — Resolver usuário atual
+```bash
+GH_USER=$(gh api user -q '.login')
+echo "[worker:<papel>] usuário: $GH_USER"
+```
+Esta variável é usada em todos os comandos que precisam de assignee. Nunca hardcode um username.
+
 ### 0.3 — Carregar comportamento
 Leia o arquivo de role do seu papel:
 
