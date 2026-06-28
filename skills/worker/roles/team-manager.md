@@ -129,22 +129,12 @@ REPO=$(gh repo view --json nameWithOwner -q '.nameWithOwner')
 GH_USER=$(gh api user -q '.login')
 echo "[worker:team-manager] lendo estado de $REPO — usuário: $GH_USER"
 
-# Labels fora do ecossistema — ignoradas em todas as queries
-# Issues/PRs com essas labels não são tocadas por nenhum worker
-IGNORE_LABELS=("jules" "approved-for-jules" "needs-triage" "needs-breakdown" "needs-decomposition" "needs-investigation" "needs-spec" "wontfix" "invalid" "duplicate")
-
-# Função auxiliar: verifica se item tem label ignorada
-has_ignored_label() {
-  local LABELS_JSON="$1"
-  for IL in "${IGNORE_LABELS[@]}"; do
-    echo "$LABELS_JSON" | jq -e "[.[] | select(.name == \"$IL\")] | length > 0" > /dev/null 2>&1 && return 0
-  done
-  return 1
-}
+# Labels fora do ecossistema — usada em todas as queries de issues e PRs
+IGNORE='["jules","approved-for-jules","needs-triage","needs-breakdown","needs-decomposition","needs-investigation","needs-spec","wontfix","invalid","duplicate"]'
 
 # Issues sem label de status (não classificadas) — excluindo labels fora do ecossistema
 UNCLASSIFIED=$(gh issue list --state open --json number,title,labels \
-  | jq --argjson ignore '["jules","approved-for-jules","needs-triage","needs-breakdown","needs-decomposition","needs-investigation","needs-spec","wontfix","invalid","duplicate"]' \
+  | jq --argjson ignore "$IGNORE" \
   '[.[] | select(
     (.labels | map(.name) | any(startswith("status:")) | not) and
     (.labels | map(.name) | any(. as $l | $ignore[] | . == $l) | not)
@@ -154,10 +144,14 @@ UNCLASSIFIED=$(gh issue list --state open --json number,title,labels \
 NEEDS_SCOPE=$(gh issue list --state open --label "status:needs-scope" \
   --json number,title --limit 20)
 
-# Issues ready sem assignee (prontas, ninguém pegou)
+# Issues ready sem assignee — excluindo labels fora do ecossistema
 READY_UNASSIGNED=$(gh issue list --state open --label "status:ready" \
   --json number,title,assignees,labels \
-  | jq '[.[] | select(.assignees | length == 0)]')
+  | jq --argjson ignore "$IGNORE" \
+  '[.[] | select(
+    (.assignees | length == 0) and
+    (.labels | map(.name) | any(. as $l | $ignore[] | . == $l) | not)
+  )]')
 
 # Autores externos cujas PRs o ecossistema nunca toca
 # (Jules é um agente externo — suas PRs têm ciclo próprio)
@@ -225,10 +219,10 @@ Classifique:
 5. Se escopo insuficiente → status:needs-scope
 6. Se tudo ok → status:ready
 
-Retorne:
+Retorne APENAS "needs-scope" ou "ready" — nunca "blocked":
 {
   "reasoning": "...",
-  "status": "needs-scope" | "ready" | "blocked",
+  "status": "needs-scope" | "ready",
   "area": "backend" | "frontend" | "infra" | "db" | "docs" | "qa",
   "risk": "low" | "high" | "conflict" | "migration" | "auth",
   "scope_comment": "uma linha explicando a classificação"
@@ -408,11 +402,12 @@ echo "$ORPHAN_ISSUES" | jq -r '.[] | "#\(.number)"' | while read N; do
 done
 
 # issues in-progress com PR já mergeada (não fechou automaticamente)
+# Nota: --search não busca no body — usamos gh pr list + jq para filtrar pelo body
 gh issue list --state open --label "status:in-progress" --json number | jq -r '.[].number' | while read N; do
-  MERGED=$(gh pr list --state merged --search "Closes #$N OR Fixes #$N OR Resolves #$N" \
-    --json number -q '.[0].number // empty' 2>/dev/null)
+  MERGED=$(gh pr list --state merged --limit 100 --json number,body \
+    -q ".[] | select(.body | test(\"(Closes|Fixes|Resolves) #$N\")) | .number" 2>/dev/null | head -1)
   if [ -n "$MERGED" ]; then
-    gh issue close "$N" --comment "## ✅ Fechada pelo team-manager\n\nPR #$MERGED foi mergeada. Issue fechada manualmente pois 'Closes #$N' não funcionou automaticamente."
+    gh issue close "$N" --comment "## ✅ Fechada pelo team-manager\n\nPR #$MERGED foi mergeada. Issue fechada manualmente pois fechamento automático não ocorreu."
     echo "[worker:team-manager] ✓ #$N fechada — PR #$MERGED já mergeada"
   fi
 done

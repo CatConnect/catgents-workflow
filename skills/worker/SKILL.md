@@ -47,24 +47,15 @@ gh auth status
 ```
 Falha → `[worker:<papel>] ❌ gh não autenticado. Rode: gh auth login`
 
-### 0.2 — Garantir labels
-```bash
-gh label list --limit 100
-```
-Crie apenas as ausentes:
-
-| Grupo | Cor | Labels |
-|-------|-----|--------|
-| Área | `0075ca` | `area:backend` `area:frontend` `area:infra` `area:db` `area:docs` `area:qa` |
-| Status | `e4e669` | `status:needs-scope` `status:ready` `status:in-progress` `status:blocked` `status:needs-review` `status:qa-approved` `status:qa-blocked` |
-| Risco | `d93f0b` | `risk:low` `risk:high` `risk:conflict` `risk:migration` `risk:auth` |
-
-### 0.2b — Resolver usuário atual
+### 0.2 — Resolver usuário atual
 ```bash
 GH_USER=$(gh api user -q '.login')
 echo "[worker:<papel>] usuário: $GH_USER"
 ```
 Esta variável é usada em todos os comandos que precisam de assignee. Nunca hardcode um username.
+
+**Nota:** normalização de labels é responsabilidade exclusiva do `team-manager` na inicialização.
+Os outros workers não precisam criar ou verificar labels.
 
 ### 0.3 — Carregar comportamento
 Leia o arquivo de role do seu papel:

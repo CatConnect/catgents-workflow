@@ -22,25 +22,39 @@ Execute todas as varreduras. Cada uma é independente.
 
 ### Varredura 1 — Branches órfãs
 
+**Requer clone local do repo.** Execute apenas se `git rev-parse --git-dir` não retornar erro.
+
 ```bash
 echo "[worker:scout] varredura 1/4 — branches órfãs"
 
-git fetch --prune
-BRANCHES=$(git branch -r | grep -v HEAD | sed 's|origin/||')
-COUNT=0
+if ! git rev-parse --git-dir > /dev/null 2>&1; then
+  echo "[worker:scout] varredura 1/4 — sem clone local, pulando"
+else
+  # Branches protegidas — nunca deletar
+  PROTECTED="main master develop staging production"
 
-echo "$BRANCHES" | while read BRANCH; do
-  PR_STATE=$(gh pr list --state all --head "$BRANCH" --json state -q '.[0].state // "NONE"' 2>/dev/null)
-  DAYS_OLD=$(( ($(date +%s) - $(git log -1 --format="%ct" "origin/$BRANCH" 2>/dev/null || echo $(date +%s))) / 86400 ))
+  git fetch --prune
+  BRANCHES=$(git branch -r | grep -v HEAD | sed 's|origin/||')
+  COUNT=0
 
-  THRESHOLD=30
-  [ "$PR_STATE" = "MERGED" ] || [ "$PR_STATE" = "CLOSED" ] && THRESHOLD=7
+  echo "$BRANCHES" | while read BRANCH; do
+    # Nunca deletar branches protegidas
+    for P in $PROTECTED; do
+      [ "$BRANCH" = "$P" ] && continue 2
+    done
 
-  if [ "$DAYS_OLD" -ge "$THRESHOLD" ] && [ "$PR_STATE" != "OPEN" ]; then
-    git push origin --delete "$BRANCH" 2>/dev/null && COUNT=$((COUNT+1))
-    echo "[worker:scout] branch deletada: $BRANCH (${DAYS_OLD}d, PR: $PR_STATE)"
-  fi
-done
+    PR_STATE=$(gh pr list --state all --head "$BRANCH" --json state -q '.[0].state // "NONE"' 2>/dev/null)
+    DAYS_OLD=$(( ($(date +%s) - $(git log -1 --format="%ct" "origin/$BRANCH" 2>/dev/null || echo $(date +%s))) / 86400 ))
+
+    THRESHOLD=30
+    [ "$PR_STATE" = "MERGED" ] || [ "$PR_STATE" = "CLOSED" ] && THRESHOLD=7
+
+    if [ "$DAYS_OLD" -ge "$THRESHOLD" ] && [ "$PR_STATE" != "OPEN" ]; then
+      git push origin --delete "$BRANCH" 2>/dev/null && COUNT=$((COUNT+1))
+      echo "[worker:scout] branch deletada: $BRANCH (${DAYS_OLD}d, PR: $PR_STATE)"
+    fi
+  done
+fi
 
 echo "[worker:scout] varredura 1/4 — branches órfãs: concluída"
 ```
@@ -102,10 +116,14 @@ echo "[worker:scout] varredura 3/4 — backlog: concluída"
 ```bash
 echo "[worker:scout] varredura 4/4 — PRs soltas"
 
-gh pr list --state open --json number,title,createdAt,body | \
-  jq -r '.[] | select(
+IGNORE_AUTHORS='["google-labs-jules[bot]","jules-google[bot]","jules"]'
+
+gh pr list --state open --json number,title,createdAt,body,author | \
+  jq --argjson ign "$IGNORE_AUTHORS" \
+  -r '.[] | select(
     (.body | test("Closes #|Fixes #|Resolves #") | not) and
-    ((now - (.createdAt | fromdateiso8601)) > 3 * 86400)
+    ((now - (.createdAt | fromdateiso8601)) > 3 * 86400) and
+    (.author.login as $a | $ign | any(. == $a) | not)
   ) | .number' | while read N; do
     ALREADY=$(gh pr view "$N" --json comments \
       -q '[.comments[] | select(.body | contains("sem issue vinculada"))] | length')
