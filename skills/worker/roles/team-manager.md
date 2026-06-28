@@ -11,68 +11,96 @@ Ele nunca implementa, nunca revisa código, nunca mergeia — só orquestra.
 ## Inicialização — Normalizar labels do repo
 
 Execute **uma única vez** antes do loop. Garante que o repo usa exatamente
-o padrão de labels da skill — sem duplicatas, truncadas ou de outros sistemas.
+o padrão de labels da skill — sem truncadas, duplicatas ou aliases.
 
 ```bash
 echo "[worker:team-manager] normalizando labels do repo..."
 
-# Labels canônicas da skill (nome → cor)
-declare -A CANONICAL=(
-  ["area:backend"]="0075ca"   ["area:frontend"]="0075ca"  ["area:infra"]="0075ca"
-  ["area:db"]="0075ca"        ["area:docs"]="0075ca"      ["area:qa"]="0075ca"
-  ["status:needs-scope"]="e4e669"  ["status:ready"]="e4e669"
-  ["status:in-progress"]="e4e669"  ["status:blocked"]="e4e669"
-  ["status:needs-review"]="e4e669" ["status:qa-approved"]="e4e669"
-  ["status:qa-blocked"]="e4e669"
-  ["risk:low"]="d93f0b"   ["risk:high"]="d93f0b"    ["risk:conflict"]="d93f0b"
-  ["risk:migration"]="d93f0b" ["risk:auth"]="d93f0b"
-)
+# ─── Labels canônicas ────────────────────────────────────────────────────────
+# Formato: "LABEL|COR" — pipe como separador (labels têm ":" internamente)
+CANONICAL_LABELS="
+area:backend|0075ca
+area:frontend|0075ca
+area:infra|0075ca
+area:db|0075ca
+area:docs|0075ca
+area:qa|0075ca
+area:admin|0075ca
+area:billing|0075ca
+area:pipeline|0075ca
+area:content|0075ca
+area:integrations|0075ca
+area:distribution|0075ca
+status:needs-scope|e4e669
+status:ready|e4e669
+status:in-progress|e4e669
+status:blocked|e4e669
+status:needs-review|e4e669
+status:qa-approved|e4e669
+status:qa-blocked|e4e669
+risk:low|d93f0b
+risk:high|d93f0b
+risk:conflict|d93f0b
+risk:migration|d93f0b
+risk:auth|d93f0b
+"
 
-# Garantir que todas as labels canônicas existem
-for LABEL in "${!CANONICAL[@]}"; do
-  COLOR="${CANONICAL[$LABEL]}"
-  EXISTS=$(gh label list --limit 200 --json name -q "[.[] | select(.name == \"$LABEL\")] | length")
-  if [ "$EXISTS" -eq 0 ]; then
-    gh label create "$LABEL" --color "$COLOR" --force
-    echo "[worker:team-manager] label criada: $LABEL"
+# ─── Mapeamento explícito de aliases → canônica ───────────────────────────────
+# Formato: "ALIAS|CANONICA" — mapeamento determinístico, sem ambiguidade
+ALIAS_MAP="
+area:backen|area:backend
+area:fronten|area:frontend
+area:infr|area:infra
+area:d|area:db
+area:q|area:qa
+area:ui|area:frontend
+area:auth|area:backend
+risk:aut|risk:auth
+risk:conflic|risk:conflict
+risk:hig|risk:high
+risk:lo|risk:low
+risk:migratio|risk:migration
+risk:medium|risk:low
+status:blocke|status:blocked
+status:in-progres|status:in-progress
+status:needs-revie|status:needs-review
+status:needs-scop|status:needs-scope
+status:qa-approve|status:qa-approved
+status:qa-blocke|status:qa-blocked
+status:read|status:ready
+status:ready-to-merge|status:qa-approved
+"
+
+# 1. Criar labels canônicas ausentes
+echo "$CANONICAL_LABELS" | grep -v '^$' | while IFS='|' read LABEL COLOR; do
+  EXISTS=$(gh label list --limit 200 --json name \
+    -q "[.[] | select(.name == \"$LABEL\")] | length" 2>/dev/null || echo 0)
+  if [ "$EXISTS" = "0" ]; then
+    gh label create "$LABEL" --color "$COLOR" --force 2>/dev/null
+    echo "[worker:team-manager] ✓ label criada: $LABEL"
   fi
 done
 
-# Labels truncadas ou com typo → migrar issues e deletar
-# Padrão: qualquer label que começa com prefixo canônico mas não está na lista
-ALL_LABELS=$(gh label list --limit 200 --json name -q '.[].name')
+# 2. Migrar aliases para canônicas e deletar alias
+echo "$ALIAS_MAP" | grep -v '^$' | while IFS='|' read ALIAS CANONICAL; do
+  EXISTS=$(gh label list --limit 200 --json name \
+    -q "[.[] | select(.name == \"$ALIAS\")] | length" 2>/dev/null || echo 0)
+  [ "$EXISTS" = "0" ] && continue
 
-echo "$ALL_LABELS" | while read LABEL; do
-  # Verifica se é uma label canônica
-  IS_CANONICAL=false
-  for C in "${!CANONICAL[@]}"; do
-    [ "$LABEL" = "$C" ] && IS_CANONICAL=true && break
-  done
-  [ "$IS_CANONICAL" = true ] && continue
+  echo "[worker:team-manager] migrando: '$ALIAS' → '$CANONICAL'"
 
-  # Verifica se parece uma label truncada (começa com prefixo canônico)
-  for PREFIX in "area:" "status:" "risk:"; do
-    if [[ "$LABEL" == "$PREFIX"* ]]; then
-      # Tenta encontrar a canônica correspondente
-      BEST_MATCH=$(printf '%s\n' "${!CANONICAL[@]}" | grep "^$PREFIX" | while read C; do
-        # Verifica se a label truncada é prefixo da canônica
-        [[ "$C" == "$LABEL"* ]] && echo "$C"
-      done | head -1)
+  gh issue list --label "$ALIAS" --state all --limit 200 --json number \
+    -q '.[].number' 2>/dev/null | while read N; do
+      gh issue edit "$N" --add-label "$CANONICAL" --remove-label "$ALIAS" 2>/dev/null || true
+    done
 
-      if [ -n "$BEST_MATCH" ]; then
-        echo "[worker:team-manager] migrando label truncada: '$LABEL' → '$BEST_MATCH'"
-        # Migra todas as issues com a label truncada para a canônica
-        gh issue list --label "$LABEL" --state all --json number -q '.[].number' | while read N; do
-          gh issue edit "$N" --add-label "$BEST_MATCH" --remove-label "$LABEL" 2>/dev/null || true
-        done
-        gh pr list --label "$LABEL" --state all --json number -q '.[].number' | while read N; do
-          gh pr edit "$N" --add-label "$BEST_MATCH" --remove-label "$LABEL" 2>/dev/null || true
-        done
-        gh label delete "$LABEL" --yes 2>/dev/null || true
-      fi
-      break
-    fi
-  done
+  gh pr list --label "$ALIAS" --state all --limit 200 --json number \
+    -q '.[].number' 2>/dev/null | while read N; do
+      gh pr edit "$N" --add-label "$CANONICAL" --remove-label "$ALIAS" 2>/dev/null || true
+    done
+
+  gh label delete "$ALIAS" --yes 2>/dev/null || true
+  echo "[worker:team-manager] ✓ '$ALIAS' migrado e removido"
 done
 
 echo "[worker:team-manager] labels normalizadas — ecossistema pronto"
