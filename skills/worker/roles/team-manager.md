@@ -146,14 +146,26 @@ READY_UNASSIGNED=$(gh issue list --state open --label "status:ready" \
   --json number,title,assignees,labels \
   | jq '[.[] | select(.assignees | length == 0)]')
 
-# PRs abertas sem label de status (precisam de QA)
-PRS_NO_LABEL=$(gh pr list --state open --json number,title,labels,author \
-  | jq '[.[] | select(.labels | map(.name) | any(startswith("status:")) | not)]')
+# Autores externos cujas PRs o ecossistema nunca toca
+# (Jules é um agente externo — suas PRs têm ciclo próprio)
+IGNORE_AUTHORS='["google-labs-jules[bot]","jules-google[bot]","jules"]'
 
-# PRs needs-review sem assignee de QA
+# PRs abertas sem label de status (precisam de QA) — excluindo PRs de autores externos
+PRS_NO_LABEL=$(gh pr list --state open --json number,title,labels,author \
+  | jq --argjson ign "$IGNORE_AUTHORS" \
+  '[.[] | select(
+    (.labels | map(.name) | any(startswith("status:")) | not) and
+    (.author.login as $a | $ign | any(. == $a) | not)
+  )]')
+
+# PRs needs-review sem assignee de QA — excluindo autores externos
 PRS_NEEDS_QA=$(gh pr list --state open --label "status:needs-review" \
-  --json number,title,assignees \
-  | jq '[.[] | select(.assignees | length == 0)]')
+  --json number,title,assignees,author \
+  | jq --argjson ign "$IGNORE_AUTHORS" \
+  '[.[] | select(
+    (.assignees | length == 0) and
+    (.author.login as $a | $ign | any(. == $a) | not)
+  )]')
 
 # PRs qa-approved sem assignee de reviewer
 PRS_NEEDS_REVIEW=$(gh pr list --state open --label "status:qa-approved" \

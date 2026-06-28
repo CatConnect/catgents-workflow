@@ -38,11 +38,15 @@ Executores e analistas só trabalham no que está assignado a eles.
 Executada **uma única vez** antes do loop. Se qualquer passo falhar — pare e informe o usuário.
 
 ### 0.1 — Verificar pré-requisitos
+
+**IMPORTANTE:** Não troque de diretório. Rode todos os comandos no diretório atual da sessão.
+Se o usuário abriu o terminal no diretório errado, pare e avise — não tente `cd` para outro projeto.
+
 ```bash
 gh auth status
 gh repo view --json name,url 2>/dev/null || echo "FAIL"
 ```
-Falha → `[worker:<papel>] ❌ pré-requisito falhou — verifique gh auth e repositório.`
+Falha → `[worker:<papel>] ❌ Terminal não está dentro de um clone do repositório alvo. Abra o terminal dentro do clone correto e tente novamente.`
 
 ### 0.2 — Garantir labels
 ```bash
