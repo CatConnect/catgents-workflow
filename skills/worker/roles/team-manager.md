@@ -295,6 +295,8 @@ gh issue edit <N> --add-label "risk:high"
 
 ### Ação 3 — Atribuir dev para issues ready
 
+**Issues in-progress com assignee**: não faça nada. O worker `dev` está implementando.
+
 Para cada issue em `READY_UNASSIGNED` (máx 1 por ciclo para não sobrecarregar):
 
 ```bash
@@ -345,12 +347,14 @@ Nunca spawne subagente para fazer a revisão — isso é exclusivo do worker `qa
 
 ### Ação 6 — Atribuir reviewer para PRs qa-approved
 
-Para cada PR em `PRS_NEEDS_REVIEW`:
+Para cada PR em `PRS_NEEDS_REVIEW` (sem assignee):
 ```bash
 gh pr edit <N> --add-assignee "$GH_USER"
 gh pr comment <N> --body "## ✅ QA aprovado — atribuído para merge pelo team-manager"
 echo "[worker:team-manager] ✓ PR #<N> → reviewer assignado"
 ```
+
+**PRs qa-approved com assignee já atribuído**: não faça nada. O worker `reviewer` irá mergear no próprio ciclo.
 
 ### Ação 7 — Gerenciar PRs qa-blocked
 
@@ -386,6 +390,8 @@ else
   fi
 fi
 ```
+
+**PR qa-blocked com dev assignado e sem commit novo**: não faça nada. O worker `dev` irá corrigir no próprio ciclo.
 
 ### Ação 8 — Detectar e corrigir estados inválidos
 
