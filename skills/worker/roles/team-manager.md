@@ -108,6 +108,19 @@ echo "[worker:team-manager] labels normalizadas — ecossistema pronto"
 
 ---
 
+## Regra fundamental
+
+**O team-manager NÃO executa trabalho técnico.**
+Ele lê o estado do GitHub, aplica labels e assignees, e spawna subagentes
+**apenas** para classificar issues (triage) e escrever specs.
+
+Ele **nunca** spawna subagente para revisar código, implementar, ou mergear.
+Isso é responsabilidade dos workers `qa`, `dev` e `reviewer` rodando em
+outras sessões. O team-manager apenas atribui o trabalho via GitHub e aguarda
+o próximo ciclo para ver o resultado.
+
+---
+
 ## Fase 1 — BUSCAR
 
 ```bash
