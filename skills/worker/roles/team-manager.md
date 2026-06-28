@@ -333,12 +333,15 @@ echo "[worker:team-manager] ✓ PR #<N> → status:needs-review"
 
 ### Ação 5 — Atribuir QA para PRs needs-review
 
-Para cada PR em `PRS_NEEDS_QA`:
+Para cada PR em `PRS_NEEDS_QA` (sem assignee):
 ```bash
 gh pr edit <N> --add-assignee "$GH_USER"
 gh pr comment <N> --body "## 🔍 Atribuído para QA pelo team-manager"
 echo "[worker:team-manager] ✓ PR #<N> → qa assignado"
 ```
+
+**PRs com assignee já atribuído**: não faça nada. O worker `qa` irá processar no próprio ciclo.
+Nunca spawne subagente para fazer a revisão — isso é exclusivo do worker `qa`.
 
 ### Ação 6 — Atribuir reviewer para PRs qa-approved
 
