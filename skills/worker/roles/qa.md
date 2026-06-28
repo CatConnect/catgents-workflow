@@ -1,28 +1,27 @@
 # role: qa (analista)
 
 **Cadência:** 10 minutos
-**Responsabilidade:** revisar PRs assignadas e emitir veredicto.
+**Responsabilidade:** revisar PRs com worker:qa e emitir veredicto.
 
-O QA nunca escolhe PR. Só revisa o que está assignado a ele.
-Não produz código — produz julgamento.
+O QA não escolhe PR. Só revisa o que tem `worker:qa`.
+Não produz código — produz julgamento documentado.
 
 ---
 
 ## Fase 1 — BUSCAR
 
 ```bash
-echo "[worker:qa] buscando PRs assignadas para revisão..."
+echo "[worker:qa] buscando PRs para revisar..."
 
 MY_PRS=$(gh pr list --state open \
-  --assignee @me \
-  --label "status:needs-review" \
-  --json number,title,body,headRefName,baseRefName,author,files)
+  --label "worker:qa" \
+  --json number,title,body,headRefName,baseRefName,author)
 
 TOTAL=$(echo "$MY_PRS" | jq length)
 echo "[worker:qa] PRs para revisar: $TOTAL"
 
 if [ "$TOTAL" -eq 0 ]; then
-  echo "[worker:qa] 😴 nada assignado — cochilando"
+  echo "[worker:qa] 😴 nada com worker:qa — saindo"
   exit 0
 fi
 ```
@@ -37,22 +36,16 @@ Para cada PR em `MY_PRS`:
 echo "[worker:qa] → revisando PR #<N> — <título>"
 ```
 
-**Verificações estruturais (antes do subagente):**
+**Verificação estrutural antes do subagente:**
 ```bash
-# 1. Base branch correta?
 BASE=$(gh pr view <N> --json baseRefName -q '.baseRefName')
 if [ "$BASE" != "main" ] && [ "$BASE" != "master" ]; then
-  gh pr edit <N> \
-    --remove-label "status:needs-review" \
-    --add-label "status:qa-blocked" \
-    --remove-assignee @me
-  gh pr comment <N> --body "## ❌ QA bloqueado — base branch incorreta\n\nBase branch é '$BASE', deveria ser 'main' ou 'master'.\n\nCorrija com: \`git rebase main\`"
-  echo "[worker:qa] ✗ PR #<N> — base branch incorreta: $BASE (assignee removido)"
+  gh pr edit <N> --remove-label "worker:qa" --add-label "worker:dev"
+  gh pr comment <N> \
+    --body "## ❌ QA bloqueado — base branch incorreta\n\nBase é '$BASE', deveria ser 'main'.\n\nCorrija com: \`git rebase main\`"
+  echo "[worker:qa] ✗ PR #<N> — base incorreta, retornado para worker:dev"
   continue
 fi
-
-# 2. Tem issue vinculada?
-HAS_ISSUE=$(gh pr view <N> --json body -q '.body' | grep -cE 'Closes #|Fixes #|Resolves #' || echo 0)
 ```
 
 Spawne subagente de revisão:
@@ -63,24 +56,22 @@ PR: #<N> — <título>
 Repo: <url>
 Branch: <headRefName> → <baseRefName>
 Autor: <author>
-Tem issue vinculada: <HAS_ISSUE>
 
 Raciocine passo a passo antes de retornar.
 
 Instruções:
 1. git fetch && git checkout <headRefName> && git pull origin <headRefName>
-2. Rode typecheck: veja o CLAUDE.md/AGENTS.md para o comando correto
-3. Rode testes: veja o CLAUDE.md/AGENTS.md para o comando correto
-4. Analise o diff: arquivos modificados, lógica, edge cases
-5. Verifique: a implementação resolve o que a issue pede?
-6. Verifique: há regressões óbvias em código não relacionado?
+2. Rode typecheck (veja CLAUDE.md/AGENTS.md para o comando)
+3. Rode testes (veja CLAUDE.md/AGENTS.md para o comando)
+4. Analise o diff — lógica, edge cases, regressões
+5. A implementação resolve o que a issue pede?
 
-Critérios de bloqueio (qualquer um → qa-blocked):
+Bloqueio se qualquer um desses:
 - Testes falhando (não pré-existentes)
 - Typecheck com erros novos
 - Lógica incorreta ou incompleta
-- PR modifica muito além do escopo da issue
-- Função/módulo inexistente sendo importado
+- Escopo muito além da issue
+- Imports de módulos inexistentes
 
 Retorne:
 {
@@ -88,33 +79,25 @@ Retorne:
   "typecheck": "ok" | "erros_novos" | "erros_preexistentes",
   "testes": "ok" | "falhando" | "sem_testes",
   "veredicto": "aprovado" | "bloqueado",
-  "problemas": ["...", "..."],
-  "comentario_qa": "texto markdown com veredicto detalhado"
+  "problemas": ["..."],
+  "comentario": "markdown detalhado com veredicto e justificativa"
 }
 ```
 
-Após receber retorno:
+Após retorno:
 
 **Se aprovado:**
 ```bash
-gh pr edit <N> \
-  --remove-label "status:needs-review" \
-  --add-label "status:qa-approved" \
-  --remove-assignee @me
-gh pr comment <N> \
-  --body "## ✅ QA aprovado\n\n$COMENTARIO_QA"
-echo "[worker:qa] ✓ PR #<N> → qa-approved (assignee removido — team-manager assignará reviewer)"
+gh pr edit <N> --remove-label "worker:qa" --add-label "worker:reviewer"
+gh pr comment <N> --body "## ✅ QA aprovado\n\n$COMENTARIO"
+echo "[worker:qa] ✓ PR #<N> → worker:reviewer"
 ```
 
 **Se bloqueado:**
 ```bash
-gh pr edit <N> \
-  --remove-label "status:needs-review" \
-  --add-label "status:qa-blocked" \
-  --remove-assignee @me
-gh pr comment <N> \
-  --body "## ❌ QA bloqueado\n\n$COMENTARIO_QA"
-echo "[worker:qa] ✗ PR #<N> → qa-blocked (assignee removido — team-manager assignará dev)"
+gh pr edit <N> --remove-label "worker:qa" --add-label "worker:dev"
+gh pr comment <N> --body "## ❌ QA bloqueado\n\n$COMENTARIO"
+echo "[worker:qa] ✗ PR #<N> → worker:dev"
 ```
 
 ---
@@ -123,4 +106,5 @@ echo "[worker:qa] ✗ PR #<N> → qa-blocked (assignee removido — team-manager
 
 ```bash
 echo "[worker:qa] ciclo concluído — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+exit 0
 ```

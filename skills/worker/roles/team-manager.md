@@ -1,78 +1,36 @@
 # role: team-manager (orquestrador)
 
 **Cadência:** 5 minutos
-**Responsabilidade:** ler o estado completo do repo e atribuir trabalho aos workers certos.
+**Responsabilidade:** classificar issues, rotear PRs para os workers certos, corrigir estados inválidos.
 
-O team-manager é o único que decide o que deve ser feito.
-Ele nunca implementa, nunca revisa código, nunca mergeia — só orquestra.
+O team-manager não implementa, não revisa código, não mergeia.
+Ele lê o estado do repo, aplica labels e comenta decisões.
 
 ---
 
-## Inicialização — Normalizar labels do repo
+## Inicialização — Limpar e normalizar labels do repo
 
-Execute **uma única vez** por invocação, antes do BUSCAR. Garante que o repo usa exatamente
-o padrão de labels da skill — sem truncadas, duplicatas ou aliases.
+Execute **uma única vez por invocação**, antes do BUSCAR.
+Remove tudo que não faz parte do ecossistema e migra labels legadas.
 
 ```bash
-echo "[worker:team-manager] normalizando labels do repo..."
+echo "[worker:team-manager] normalizando labels..."
 
-# ─── Labels canônicas ────────────────────────────────────────────────────────
-# Formato: "LABEL|COR" — pipe como separador (labels têm ":" internamente)
-CANONICAL_LABELS="
-area:backend|0075ca
-area:frontend|0075ca
-area:infra|0075ca
-area:db|0075ca
-area:docs|0075ca
-area:qa|0075ca
-area:admin|0075ca
-area:billing|0075ca
-area:pipeline|0075ca
-area:content|0075ca
-area:integrations|0075ca
-area:distribution|0075ca
-status:needs-scope|e4e669
-status:ready|e4e669
-status:in-progress|e4e669
-status:blocked|e4e669
-status:needs-review|e4e669
-status:qa-approved|e4e669
-status:qa-blocked|e4e669
-risk:low|d93f0b
-risk:high|d93f0b
-risk:conflict|d93f0b
-risk:migration|d93f0b
-risk:auth|d93f0b
-"
-
-# ─── Mapeamento explícito de aliases → canônica ───────────────────────────────
-# Formato: "ALIAS|CANONICA" — mapeamento determinístico, sem ambiguidade
-ALIAS_MAP="
-area:backen|area:backend
-area:fronten|area:frontend
-area:infr|area:infra
-area:d|area:db
-area:q|area:qa
-area:ui|area:frontend
-area:auth|area:backend
-risk:aut|risk:auth
-risk:conflic|risk:conflict
-risk:hig|risk:high
-risk:lo|risk:low
-risk:migratio|risk:migration
-risk:medium|risk:low
-status:blocke|status:blocked
-status:in-progres|status:in-progress
-status:needs-revie|status:needs-review
-status:needs-scop|status:needs-scope
-status:qa-approve|status:qa-approved
-status:qa-blocke|status:qa-blocked
-status:read|status:ready
-status:ready-to-merge|status:qa-approved
+# Labels canônicas do ecossistema — formato: "LABEL|COR"
+CANONICAL="
+status:backlog|8b949e
+status:ready|0075ca
+status:in-progress|fbca04
+status:blocked|d93f0b
+worker:dev|c5def5
+worker:qa|c5def5
+worker:reviewer|c5def5
+priority:high|e99695
+priority:low|c2e0c6
 "
 
 # 1. Criar labels canônicas ausentes
-echo "$CANONICAL_LABELS" | grep -v '^$' | while IFS='|' read LABEL COLOR; do
+echo "$CANONICAL" | grep -v '^$' | while IFS='|' read LABEL COLOR; do
   EXISTS=$(gh label list --limit 200 --json name \
     -q "[.[] | select(.name == \"$LABEL\")] | length" 2>/dev/null || echo 0)
   if [ "$EXISTS" = "0" ]; then
@@ -81,26 +39,120 @@ echo "$CANONICAL_LABELS" | grep -v '^$' | while IFS='|' read LABEL COLOR; do
   fi
 done
 
-# 2. Migrar aliases para canônicas e deletar alias
-echo "$ALIAS_MAP" | grep -v '^$' | while IFS='|' read ALIAS CANONICAL; do
+# 2. Migrar labels legadas para canônicas — formato: "LABEL_ANTIGA|LABEL_NOVA"
+MIGRATIONS="
+status:needs-scope|status:backlog
+status:qa-approved|worker:reviewer
+status:qa-blocked|worker:dev
+status:needs-review|worker:qa
+area:backend|
+area:frontend|
+area:infra|
+area:db|
+area:docs|
+area:qa|
+area:admin|
+area:billing|
+area:pipeline|
+area:content|
+area:integrations|
+area:distribution|
+area:ui|
+area:auth|
+risk:low|
+risk:high|
+risk:conflict|
+risk:migration|
+risk:auth|
+risk:medium|
+type:bug|
+type:chore|
+type:feature|
+type:docs|
+complexity:simple|
+complexity:medium|
+complexity:complex|
+priority:p0|priority:high
+priority:p1|priority:high
+priority:p2|priority:low
+priority:p3|priority:low
+jules|
+approved-for-jules|
+needs-triage|
+needs-breakdown|
+needs-decomposition|
+needs-investigation|
+needs-spec|
+ready|
+model-b|
+epic|
+reliability|
+billing|
+p0|priority:high
+p1|priority:high
+p2|priority:low
+p3|priority:low
+"
+
+echo "$MIGRATIONS" | grep -v '^$' | while IFS='|' read OLD NEW; do
   EXISTS=$(gh label list --limit 200 --json name \
-    -q "[.[] | select(.name == \"$ALIAS\")] | length" 2>/dev/null || echo 0)
+    -q "[.[] | select(.name == \"$OLD\")] | length" 2>/dev/null || echo 0)
   [ "$EXISTS" = "0" ] && continue
 
-  echo "[worker:team-manager] migrando: '$ALIAS' → '$CANONICAL'"
+  if [ -n "$NEW" ]; then
+    echo "[worker:team-manager] migrando: '$OLD' → '$NEW'"
+    gh issue list --label "$OLD" --state all --limit 200 --json number \
+      -q '.[].number' 2>/dev/null | while read N; do
+        gh issue edit "$N" --add-label "$NEW" --remove-label "$OLD" 2>/dev/null || true
+      done
+    gh pr list --label "$OLD" --state all --limit 200 --json number \
+      -q '.[].number' 2>/dev/null | while read N; do
+        gh pr edit "$N" --add-label "$NEW" --remove-label "$OLD" 2>/dev/null || true
+      done
+  else
+    echo "[worker:team-manager] removendo label sem equivalente: '$OLD'"
+    gh issue list --label "$OLD" --state all --limit 200 --json number \
+      -q '.[].number' 2>/dev/null | while read N; do
+        gh issue edit "$N" --remove-label "$OLD" 2>/dev/null || true
+      done
+    gh pr list --label "$OLD" --state all --limit 200 --json number \
+      -q '.[].number' 2>/dev/null | while read N; do
+        gh pr edit "$N" --remove-label "$OLD" 2>/dev/null || true
+      done
+  fi
 
-  gh issue list --label "$ALIAS" --state all --limit 200 --json number \
-    -q '.[].number' 2>/dev/null | while read N; do
-      gh issue edit "$N" --add-label "$CANONICAL" --remove-label "$ALIAS" 2>/dev/null || true
-    done
+  gh label delete "$OLD" --yes 2>/dev/null || true
+  echo "[worker:team-manager] ✓ '$OLD' processada"
+done
 
-  gh pr list --label "$ALIAS" --state all --limit 200 --json number \
-    -q '.[].number' 2>/dev/null | while read N; do
-      gh pr edit "$N" --add-label "$CANONICAL" --remove-label "$ALIAS" 2>/dev/null || true
-    done
+# Migração especial: status:needs-review → status:in-progress + worker:qa
+# (needs-review já foi mapeado para worker:qa acima, mas falta o status:in-progress)
+gh pr list --label "worker:qa" --state open --json number,labels \
+  -q '.[] | select(.labels | map(.name) | any(. == "status:in-progress") | not) | .number' \
+  2>/dev/null | while read N; do
+    gh pr edit "$N" --add-label "status:in-progress" 2>/dev/null || true
+  done
 
-  gh label delete "$ALIAS" --yes 2>/dev/null || true
-  echo "[worker:team-manager] ✓ '$ALIAS' migrado e removido"
+# 3. Deletar qualquer label que não seja canônica
+CANONICAL_NAMES=$(echo "$CANONICAL" | grep -v '^$' | cut -d'|' -f1)
+gh label list --limit 200 --json name -q '.[].name' 2>/dev/null | while read LABEL; do
+  IS_CANONICAL=false
+  while IFS= read -r C; do
+    [ "$LABEL" = "$C" ] && IS_CANONICAL=true && break
+  done <<< "$CANONICAL_NAMES"
+  if [ "$IS_CANONICAL" = "false" ]; then
+    # Remover de todos os itens antes de deletar
+    gh issue list --label "$LABEL" --state all --limit 200 --json number \
+      -q '.[].number' 2>/dev/null | while read N; do
+        gh issue edit "$N" --remove-label "$LABEL" 2>/dev/null || true
+      done
+    gh pr list --label "$LABEL" --state all --limit 200 --json number \
+      -q '.[].number' 2>/dev/null | while read N; do
+        gh pr edit "$N" --remove-label "$LABEL" 2>/dev/null || true
+      done
+    gh label delete "$LABEL" --yes 2>/dev/null || true
+    echo "[worker:team-manager] ✓ label extra removida: $LABEL"
+  fi
 done
 
 echo "[worker:team-manager] labels normalizadas — ecossistema pronto"
@@ -110,97 +162,51 @@ echo "[worker:team-manager] labels normalizadas — ecossistema pronto"
 
 ## Regra fundamental
 
-**O team-manager NÃO executa trabalho técnico.**
-Ele lê o estado do GitHub, aplica labels e assignees, e spawna subagentes
-**apenas** para classificar issues (triage) e escrever specs.
-
-Ele **nunca** spawna subagente para revisar código, implementar, ou mergear.
-Isso é responsabilidade dos workers `qa`, `dev` e `reviewer` rodando em
-outras sessões. O team-manager apenas atribui o trabalho via GitHub e aguarda
-o próximo ciclo para ver o resultado.
+O team-manager **não executa trabalho técnico**.
+Só classifica, roteia e corrige. Spawna subagentes apenas para classificar issues e escrever specs.
 
 ---
 
 ## Fase 1 — BUSCAR
 
 ```bash
-# Estado completo do repo
 REPO=$(gh repo view --json nameWithOwner -q '.nameWithOwner')
 GH_USER=$(gh api user -q '.login')
-echo "[worker:team-manager] lendo estado de $REPO — usuário: $GH_USER"
+echo "[worker:team-manager] lendo estado de $REPO"
 
-# Labels fora do ecossistema — usada em todas as queries de issues e PRs
-IGNORE='["jules","approved-for-jules","needs-triage","needs-breakdown","needs-decomposition","needs-investigation","needs-spec","wontfix","invalid","duplicate"]'
-
-# Issues sem label de status (não classificadas) — excluindo labels fora do ecossistema
+# Issues sem status (novas, precisam ser classificadas)
 UNCLASSIFIED=$(gh issue list --state open --json number,title,labels \
-  | jq --argjson ignore "$IGNORE" \
-  '[.[] | select(
-    (.labels | map(.name) | any(startswith("status:")) | not) and
-    (.labels | map(.name) | any(. as $l | $ignore[] | . == $l) | not)
-  )]')
+  | jq '[.[] | select(.labels | map(.name) | any(startswith("status:")) | not)]')
 
-# Issues needs-scope (aguardando spec)
-NEEDS_SCOPE=$(gh issue list --state open --label "status:needs-scope" \
-  --json number,title --limit 20)
+# Issues status:backlog sem spec (precisam de spec)
+BACKLOG=$(gh issue list --state open --label "status:backlog" \
+  --json number,title,body --limit 20)
 
-# Issues ready sem assignee — excluindo labels fora do ecossistema
-READY_UNASSIGNED=$(gh issue list --state open --label "status:ready" \
-  --json number,title,assignees,labels \
-  | jq --argjson ignore "$IGNORE" \
-  '[.[] | select(
-    (.assignees | length == 0) and
-    (.labels | map(.name) | any(. as $l | $ignore[] | . == $l) | not)
-  )]')
+# Issues status:ready sem worker:dev (precisam ser atribuídas)
+READY=$(gh issue list --state open --label "status:ready" \
+  --json number,title,labels \
+  | jq '[.[] | select(.labels | map(.name) | any(. == "worker:dev") | not)]')
 
-# Autores externos cujas PRs o ecossistema nunca toca
-# (Jules é um agente externo — suas PRs têm ciclo próprio)
-IGNORE_AUTHORS='["google-labs-jules[bot]","jules-google[bot]","jules"]'
+# PRs sem worker:* (novas, precisam ir para QA)
+PRS_NEW=$(gh pr list --state open --json number,title,labels \
+  | jq '[.[] | select(.labels | map(.name) | any(startswith("worker:")) | not)]')
 
-# PRs abertas sem label de status (precisam de QA) — excluindo PRs de autores externos
-PRS_NO_LABEL=$(gh pr list --state open --json number,title,labels,author \
-  | jq --argjson ign "$IGNORE_AUTHORS" \
-  '[.[] | select(
-    (.labels | map(.name) | any(startswith("status:")) | not) and
-    (.author.login as $a | $ign | any(. == $a) | not)
-  )]')
+# Issues/PRs bloqueadas (status:blocked) — para log
+BLOCKED=$(gh issue list --state open --label "status:blocked" --json number,title)
 
-# PRs needs-review sem assignee de QA — excluindo autores externos
-PRS_NEEDS_QA=$(gh pr list --state open --label "status:needs-review" \
-  --json number,title,assignees,author \
-  | jq --argjson ign "$IGNORE_AUTHORS" \
-  '[.[] | select(
-    (.assignees | length == 0) and
-    (.author.login as $a | $ign | any(. == $a) | not)
-  )]')
-
-# PRs qa-approved sem assignee de reviewer
-PRS_NEEDS_REVIEW=$(gh pr list --state open --label "status:qa-approved" \
-  --json number,title,assignees \
-  | jq '[.[] | select(.assignees | length == 0)]')
-
-# PRs qa-blocked (todas — manager avalia cada uma)
-PRS_QA_BLOCKED=$(gh pr list --state open --label "status:qa-blocked" \
-  --json number,title,assignees,author)
-
-echo "[worker:team-manager] não-classificadas: $(echo $UNCLASSIFIED | jq length)"
-echo "[worker:team-manager] needs-scope: $(echo $NEEDS_SCOPE | jq length)"
-echo "[worker:team-manager] ready sem assignee: $(echo $READY_UNASSIGNED | jq length)"
-echo "[worker:team-manager] PRs sem status: $(echo $PRS_NO_LABEL | jq length)"
-echo "[worker:team-manager] PRs aguardando QA: $(echo $PRS_NEEDS_QA | jq length)"
-echo "[worker:team-manager] PRs aguardando merge: $(echo $PRS_NEEDS_REVIEW | jq length)"
-echo "[worker:team-manager] PRs qa-blocked sem dev: $(echo $PRS_QA_BLOCKED | jq length)"
+echo "[worker:team-manager] não classificadas: $(echo $UNCLASSIFIED | jq length)"
+echo "[worker:team-manager] backlog sem spec: $(echo $BACKLOG | jq length)"
+echo "[worker:team-manager] ready sem worker: $(echo $READY | jq length)"
+echo "[worker:team-manager] PRs novas: $(echo $PRS_NEW | jq length)"
 ```
 
 ---
 
 ## Fase 2 — EXECUTAR
 
-Execute cada ação abaixo na ordem. Cada uma é independente — não pare se uma não tiver itens.
+### Ação 1 — Classificar issues novas
 
-### Ação 1 — Classificar issues não-classificadas
-
-Para cada issue em `UNCLASSIFIED`, spawne subagente de classificação:
+Para cada issue em `UNCLASSIFIED`, spawne subagente:
 
 ```
 Você é um subagente de triage. NÃO pergunte — classifique e retorne JSON.
@@ -211,46 +217,36 @@ Repo: <url>
 
 Raciocine passo a passo antes de retornar.
 
-Classifique:
-1. A issue tem escopo suficiente para implementar? (critérios claros, área definida)
-2. Qual área? (backend/frontend/infra/db/docs/qa)
-3. Qual risco? (low/high/conflict/migration/auth)
-4. Se risk:high ou risk:auth ou risk:migration → status:needs-scope (humano deve aprovar)
-5. Se escopo insuficiente → status:needs-scope
-6. Se tudo ok → status:ready
+A issue tem escopo suficiente para implementar agora?
+- Critérios claros, comportamento definido → status:ready
+- Escopo vago, decisões pendentes, risco alto → status:backlog
 
-Retorne APENAS "needs-scope" ou "ready" — nunca "blocked":
+Retorne APENAS:
 {
   "reasoning": "...",
-  "status": "needs-scope" | "ready",
-  "area": "backend" | "frontend" | "infra" | "db" | "docs" | "qa",
-  "risk": "low" | "high" | "conflict" | "migration" | "auth",
-  "scope_comment": "uma linha explicando a classificação"
+  "status": "ready" | "backlog",
+  "resumo": "uma linha explicando a decisão"
 }
 ```
 
-Após receber retorno do subagente:
+Após retorno:
 ```bash
-gh issue edit <N> \
-  --add-label "status:<status>,area:<area>,risk:<risk>"
+gh issue edit <N> --add-label "status:<status>"
 gh issue comment <N> \
-  --body "## 🏷️ Classificado pelo team-manager\n\n<scope_comment>\n\nStatus: status:<status> | Área: area:<area> | Risco: risk:<risk>"
+  --body "## 🏷️ Classificado — team-manager\n\n<resumo>\n\nStatus: **status:<status>**"
+echo "[worker:team-manager] ✓ #<N> → status:<status>"
 ```
 
-### Ação 2 — Escrever spec para issues needs-scope
+### Ação 2 — Escrever spec para issues em backlog
 
-Para cada issue em `NEEDS_SCOPE`, verifique antes de spawnar:
+Para cada issue em `BACKLOG`:
 ```bash
 HAS_SPEC=$(gh issue view <N> --json comments \
   -q '[.comments[] | select(.body | contains("## Spec"))] | length')
-if [ "$HAS_SPEC" -gt 0 ]; then
-  echo "[worker:team-manager] #<N> já tem spec — pulando"
-  continue
-fi
+[ "$HAS_SPEC" -gt 0 ] && echo "[worker:team-manager] #<N> já tem spec — pulando" && continue
 ```
 
-Somente se `HAS_SPEC = 0`:
-
+Se sem spec, spawne subagente:
 ```
 Você é um subagente de produto. NÃO pergunte — escreva a spec e retorne JSON.
 
@@ -260,157 +256,104 @@ Repo: <url>
 
 Raciocine passo a passo antes de retornar.
 
-Escreva uma spec implementável com:
-1. Contexto (por que isso importa)
-2. Critérios de aceitação (checkboxes mensuráveis)
-3. Escopo explícito (o que NÃO está incluído)
-4. Área e risco confirmados
+Escreva uma spec implementável:
+1. Contexto — por que isso importa
+2. Critérios de aceitação — checkboxes mensuráveis
+3. Escopo — o que NÃO está incluído
+4. Esta spec está pronta para dev implementar? (true/false)
+5. Se não: o que falta decidir?
 
 Retorne:
 {
   "reasoning": "...",
   "spec_markdown": "## Spec\n\n...",
-  "pronto_para_dev": true | false,
-  "motivo_bloqueio": "..." | null
+  "pronto": true | false,
+  "pendencia": "..." | null
 }
 ```
 
-Após receber retorno:
+Após retorno:
 ```bash
 gh issue comment <N> --body "<spec_markdown>"
 
-# Se pronto_para_dev:
-gh issue edit <N> --remove-label "status:needs-scope" --add-label "status:ready"
-
-# Se bloqueado:
-gh issue comment <N> --body "## ⚠️ Requer decisão humana\n\n<motivo_bloqueio>\n\n@<owner>"
-gh issue edit <N> --add-label "risk:high"
+if [ "$PRONTO" = "true" ]; then
+  gh issue edit <N> --remove-label "status:backlog" --add-label "status:ready"
+  echo "[worker:team-manager] ✓ #<N> → status:ready (spec escrita)"
+else
+  gh issue comment <N> --body "## ⚠️ Pendência — team-manager\n\n<pendencia>\n\n@$GH_USER decisão necessária."
+  echo "[worker:team-manager] ✓ #<N> → aguardando decisão humana"
+fi
 ```
 
-### Ação 3 — Atribuir dev para issues ready
+### Ação 3 — Atribuir worker:dev para issues ready
 
-**Issues in-progress com assignee**: não faça nada. O worker `dev` está implementando.
+**Issues in-progress ou com worker:dev já**: não faça nada.
 
-Para cada issue em `READY_UNASSIGNED` (máx 1 por ciclo para não sobrecarregar):
-
+Para cada issue em `READY`:
 ```bash
-# Verifica se dev já tem issue em andamento
-DEV_LOAD=$(gh issue list --state open --label "status:in-progress" \
-  --assignee "$GH_USER" --json number | jq length)
+# Limitar: máx 2 issues com worker:dev simultâneas
+DEV_LOAD=$(gh issue list --state open --label "worker:dev" --json number | jq length)
 
 if [ "$DEV_LOAD" -lt 2 ]; then
-  gh issue edit <N> \
-    --add-assignee "$GH_USER" \
-    --add-label "status:in-progress" \
-    --remove-label "status:ready"
+  gh issue edit <N> --add-label "worker:dev"
   gh issue comment <N> \
-    --body "## 👷 Atribuído pelo team-manager\n\n@$GH_USER implementar conforme spec acima."
-  echo "[worker:team-manager] ✓ #<N> atribuída para dev"
+    --body "## 👷 Atribuído para dev — team-manager\n\nImplemente conforme spec acima."
+  echo "[worker:team-manager] ✓ #<N> → worker:dev"
 else
-  echo "[worker:team-manager] dev já tem $DEV_LOAD issues — aguardando"
+  echo "[worker:team-manager] dev com $DEV_LOAD issues — aguardando"
 fi
 ```
 
-### Ação 4 — Rotular PRs sem status
+### Ação 4 — Rotear PRs novas para QA
 
-Para cada PR em `PRS_NO_LABEL`:
+Para cada PR em `PRS_NEW`:
 ```bash
-# Verifica se tem issue vinculada
-HAS_ISSUE=$(gh pr view <N> --json body -q '.body' | grep -cE 'Closes #|Fixes #|Resolves #' || echo 0)
-
-if [ "$HAS_ISSUE" -eq 0 ]; then
-  gh pr edit <N> --add-label "status:needs-review"
-  gh pr comment <N> --body "## ⚠️ PR sem issue vinculada\n\nAdicione 'Closes #N' no body para fechar a issue automaticamente no merge."
-else
-  gh pr edit <N> --add-label "status:needs-review"
-fi
-echo "[worker:team-manager] ✓ PR #<N> → status:needs-review"
+gh pr edit <N> --add-label "status:in-progress" --add-label "worker:qa"
+gh pr comment <N> --body "## 🔍 Roteado para QA — team-manager"
+echo "[worker:team-manager] ✓ PR #<N> → worker:qa"
 ```
 
-### Ação 5 — Atribuir QA para PRs needs-review
+**PRs com worker:qa já**: não faça nada. Worker qa irá processar.
+**PRs com worker:reviewer já**: não faça nada. Worker reviewer irá processar.
+**PRs com worker:dev já**: não faça nada. Worker dev irá corrigir.
 
-Para cada PR em `PRS_NEEDS_QA` (sem assignee):
-```bash
-gh pr edit <N> --add-assignee "$GH_USER"
-gh pr comment <N> --body "## 🔍 Atribuído para QA pelo team-manager"
-echo "[worker:team-manager] ✓ PR #<N> → qa assignado"
-```
-
-**PRs com assignee já atribuído**: não faça nada. O worker `qa` irá processar no próprio ciclo.
-Nunca spawne subagente para fazer a revisão — isso é exclusivo do worker `qa`.
-
-### Ação 6 — Atribuir reviewer para PRs qa-approved
-
-Para cada PR em `PRS_NEEDS_REVIEW` (sem assignee):
-```bash
-gh pr edit <N> --add-assignee "$GH_USER"
-gh pr comment <N> --body "## ✅ QA aprovado — atribuído para merge pelo team-manager"
-echo "[worker:team-manager] ✓ PR #<N> → reviewer assignado"
-```
-
-**PRs qa-approved com assignee já atribuído**: não faça nada. O worker `reviewer` irá mergear no próprio ciclo.
-
-### Ação 7 — Gerenciar PRs qa-blocked
-
-Para cada PR `qa-blocked`:
+### Ação 5 — Detectar e corrigir estados inválidos
 
 ```bash
-AUTHOR=$(gh pr view <N> --json author -q '.author.login')
+# Issues status:in-progress sem PR aberta há mais de 2 dias
+gh issue list --state open --label "status:in-progress" \
+  --json number,title,createdAt,labels | \
+  jq -r '.[] | select((now - (.createdAt | fromdateiso8601)) > 2 * 86400) | .number' | \
+  while read N; do
+    HAS_PR=$(gh pr list --state open \
+      --search "Closes #$N OR Fixes #$N OR Resolves #$N" \
+      --json number -q 'length' 2>/dev/null || echo 0)
+    # Também checar pelo body
+    HAS_PR_BODY=$(gh pr list --state open --limit 100 --json number,body \
+      -q "[.[] | select(.body | test(\"(Closes|Fixes|Resolves) #$N\"))] | length" 2>/dev/null || echo 0)
+    if [ "$HAS_PR" = "0" ] && [ "$HAS_PR_BODY" = "0" ]; then
+      ALREADY=$(gh issue view "$N" --json comments \
+        -q '[.comments[] | select(.body | contains("sem PR associada"))] | length')
+      if [ "$ALREADY" = "0" ]; then
+        gh issue comment "$N" \
+          --body "## ⚠️ Alerta — team-manager\n\nIssue em status:in-progress há mais de 2 dias sem PR associada.\n\n@$GH_USER verifique o andamento."
+        echo "[worker:team-manager] ⚠ #$N — in-progress sem PR (alerta enviado)"
+      fi
+    fi
+  done
 
-# Verifica se já tem correção após o comentário de QA
-QA_BLOCKED_AT=$(gh pr view <N> --json comments \
-  -q '[.comments[] | select(.body | contains("❌ QA bloqueado"))] | last | .createdAt // empty')
-LAST_COMMIT_AT=$(gh pr view <N> --json commits \
-  -q '.commits | last | .committedDate // empty')
-
-if [ -n "$QA_BLOCKED_AT" ] && [ -n "$LAST_COMMIT_AT" ] && [[ "$LAST_COMMIT_AT" > "$QA_BLOCKED_AT" ]]; then
-  # Dev já corrigiu — promover para needs-review e reatribuir QA
-  gh pr edit <N> \
-    --remove-label "status:qa-blocked" \
-    --add-label "status:needs-review" \
-    --add-assignee "$GH_USER"
-  gh pr comment <N> --body "## 🔍 Reatribuído para QA pelo team-manager\n\nCorreção detectada após bloqueio. Nova revisão de QA iniciada."
-  echo "[worker:team-manager] ✓ PR #<N> → correção detectada, reatribuído para QA"
-else
-  # Dev ainda não corrigiu — atribuir dev se sem assignee, evitar spam de comentário
-  ALREADY_NOTIFIED=$(gh pr view <N> --json comments \
-    -q '[.comments[] | select(.body | contains("Retornado para correção"))] | length')
-  if [ "$ALREADY_NOTIFIED" -eq 0 ]; then
-    gh pr edit <N> --add-assignee "$AUTHOR"
-    gh pr comment <N> --body "## 🔄 Retornado para correção pelo team-manager\n\n@$AUTHOR veja os comentários de QA acima e corrija."
-    echo "[worker:team-manager] ✓ PR #<N> → $AUTHOR notificado para corrigir"
-  else
-    echo "[worker:team-manager] PR #<N> → aguardando correção de $AUTHOR (já notificado)"
-  fi
-fi
-```
-
-**PR qa-blocked com dev assignado e sem commit novo**: não faça nada. O worker `dev` irá corrigir no próprio ciclo.
-
-### Ação 8 — Detectar e corrigir estados inválidos
-
-```bash
-# issues in-progress sem assignee (dev morreu)
-ORPHAN_ISSUES=$(gh issue list --state open --label "status:in-progress" \
-  --json number,title,assignees \
-  | jq '[.[] | select(.assignees | length == 0)]')
-
-echo "$ORPHAN_ISSUES" | jq -r '.[] | "#\(.number)"' | while read N; do
-  gh issue edit "$N" --remove-label "status:in-progress" --add-label "status:ready"
-  gh issue comment "$N" --body "## 🔧 Corrigido pelo team-manager\n\nIssue estava in-progress sem assignee (worker morreu). Retornada para status:ready."
-  echo "[worker:team-manager] ✓ #$N corrigido → status:ready"
-done
-
-# issues in-progress com PR já mergeada (não fechou automaticamente)
-# Nota: --search não busca no body — usamos gh pr list + jq para filtrar pelo body
-gh issue list --state open --label "status:in-progress" --json number | jq -r '.[].number' | while read N; do
-  MERGED=$(gh pr list --state merged --limit 100 --json number,body \
-    -q ".[] | select(.body | test(\"(Closes|Fixes|Resolves) #$N\")) | .number" 2>/dev/null | head -1)
-  if [ -n "$MERGED" ]; then
-    gh issue close "$N" --comment "## ✅ Fechada pelo team-manager\n\nPR #$MERGED foi mergeada. Issue fechada manualmente pois fechamento automático não ocorreu."
-    echo "[worker:team-manager] ✓ #$N fechada — PR #$MERGED já mergeada"
-  fi
-done
+# Issues status:in-progress com PR já mergeada (não fechou automaticamente)
+gh issue list --state open --label "status:in-progress" --json number,labels \
+  -q '.[].number' 2>/dev/null | while read N; do
+    MERGED=$(gh pr list --state merged --limit 100 --json number,body \
+      -q ".[] | select(.body | test(\"(Closes|Fixes|Resolves) #$N\")) | .number" \
+      2>/dev/null | head -1)
+    if [ -n "$MERGED" ]; then
+      gh issue close "$N" \
+        --comment "## ✅ Fechada — team-manager\n\nPR #$MERGED mergeada. Fechamento automático não ocorreu."
+      echo "[worker:team-manager] ✓ #$N fechada — PR #$MERGED já mergeada"
+    fi
+  done
 ```
 
 ---
@@ -419,5 +362,5 @@ done
 
 ```bash
 echo "[worker:team-manager] ciclo concluído — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-echo "[worker:team-manager] próximo ciclo em 5 minutos"
+exit 0
 ```

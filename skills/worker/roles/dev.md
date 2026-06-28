@@ -1,37 +1,34 @@
 # role: dev (executor)
 
 **Cadência:** 10 minutos
-**Responsabilidade:** implementar o que foi assignado pelo team-manager.
+**Responsabilidade:** implementar issues e corrigir PRs com worker:dev.
 
-O dev nunca escolhe issue. Só trabalha no que está assignado a ele.
-Se não há nada assignado → dorme.
+O dev só trabalha no que tem `worker:dev`. Se não há nada → exit.
 
 ---
 
 ## Fase 1 — BUSCAR
 
 ```bash
-echo "[worker:dev] buscando trabalho assignado..."
+echo "[worker:dev] buscando trabalho..."
 
-# Issues assignadas a mim para implementar
+# Issues para implementar
 MY_ISSUES=$(gh issue list --state open \
-  --assignee @me \
-  --label "status:in-progress" \
+  --label "worker:dev" \
   --json number,title,body,labels)
 
-# PRs assignadas a mim para corrigir (qa-blocked)
-MY_BLOCKED_PRS=$(gh pr list --state open \
-  --assignee @me \
-  --label "status:qa-blocked" \
+# PRs para corrigir (QA bloqueou)
+MY_PRS=$(gh pr list --state open \
+  --label "worker:dev" \
   --json number,title,body,headRefName)
 
 TOTAL_ISSUES=$(echo "$MY_ISSUES" | jq length)
-TOTAL_BLOCKED=$(echo "$MY_BLOCKED_PRS" | jq length)
+TOTAL_PRS=$(echo "$MY_PRS" | jq length)
 
-echo "[worker:dev] issues assignadas: $TOTAL_ISSUES | PRs bloqueadas para corrigir: $TOTAL_BLOCKED"
+echo "[worker:dev] issues: $TOTAL_ISSUES | PRs para corrigir: $TOTAL_PRS"
 
-if [ "$TOTAL_ISSUES" -eq 0 ] && [ "$TOTAL_BLOCKED" -eq 0 ]; then
-  echo "[worker:dev] 😴 nada assignado — cochilando"
+if [ "$TOTAL_ISSUES" -eq 0 ] && [ "$TOTAL_PRS" -eq 0 ]; then
+  echo "[worker:dev] 😴 nada com worker:dev — saindo"
   exit 0
 fi
 ```
@@ -40,20 +37,18 @@ fi
 
 ## Fase 2 — EXECUTAR
 
-**Prioridade: PRs bloqueadas primeiro, issues novas depois.**
+**Prioridade: PRs para corrigir primeiro, issues novas depois.**
 
-### Prioridade 1 — Corrigir PRs qa-blocked
+### Prioridade 1 — Corrigir PRs bloqueadas pelo QA
 
-Para cada PR em `MY_BLOCKED_PRS`:
+Para cada PR em `MY_PRS`:
 
 ```bash
-echo "[worker:dev] → corrigindo PR #<N> — qa-blocked"
+echo "[worker:dev] → corrigindo PR #<N>"
 
-# 1. Ler comentários de QA para entender o problema
+# Ler comentário de QA para entender o problema
 QA_COMMENT=$(gh pr view <N> --json comments \
   -q '[.comments[] | select(.body | contains("❌ QA bloqueado"))] | last | .body')
-
-echo "Problema apontado pelo QA: $QA_COMMENT"
 ```
 
 Spawne subagente de correção:
@@ -71,51 +66,49 @@ Raciocine passo a passo antes de retornar.
 Instruções:
 1. git fetch && git checkout <branch> && git pull origin <branch>
 2. Leia o código afetado
-3. Corrija exatamente os problemas listados pelo QA — nada mais
+3. Corrija exatamente os problemas listados — nada mais
 4. Rode typecheck e testes se existirem
-5. git commit -m "fix: <descrição do que foi corrigido>"
-6. git push
+5. git commit -m "fix: <descrição>" && git push
 
 Retorne:
 {
   "reasoning": "...",
-  "correcoes_feitas": ["...", "..."],
+  "correcoes": ["...", "..."],
   "testes_passando": true | false,
   "commit": "hash ou null"
 }
 ```
 
-Após receber retorno:
+Após retorno:
 ```bash
-# Dev NÃO muda labels — só reporta o que fez.
-# O team-manager detecta o novo commit e reatribui QA no próximo ciclo.
+# Remove worker:dev, aplica worker:qa para nova revisão
+gh pr edit <N> --remove-label "worker:dev" --add-label "worker:qa"
 gh pr comment <N> \
-  --body "## 🔧 Correções aplicadas\n\n**O que foi corrigido:**\n$(echo $CORRECOES | sed 's/,/\n- /g')\n\nAguardando reatribuição de QA pelo team-manager."
-echo "[worker:dev] ✓ PR #<N> — correções pushadas, aguardando team-manager"
+  --body "## 🔧 Correções aplicadas — dev\n\n**Corrigido:**\n- <correcoes>\n\nRoteado de volta para QA."
+echo "[worker:dev] ✓ PR #<N> — correções pushadas → worker:qa"
 ```
 
-### Prioridade 2 — Implementar issue assignada
+### Prioridade 2 — Implementar issue (máx 1 por ciclo)
 
-Para cada issue em `MY_ISSUES` (máx 1 por ciclo):
+Para a primeira issue em `MY_ISSUES`:
 
 ```bash
 echo "[worker:dev] → implementando #<N> — <título>"
+
+# Marcar issue como in-progress
+gh issue edit <N> --add-label "status:in-progress" --remove-label "status:ready"
 ```
 
-**Preparação git (obrigatório antes de qualquer implementação):**
+**Preparação git:**
 ```bash
 git fetch --prune
 git checkout main && git pull origin main
 
-# Verifica se branch já existe
-BRANCH_EXISTS=$(git branch -r --list "origin/<area>/<N>-*" | head -1)
+BRANCH_EXISTS=$(git branch -r --list "origin/*/<N>-*" | head -1)
 if [ -z "$BRANCH_EXISTS" ]; then
-  git checkout -b <area>/<N>-<slug>
-  echo "[worker:dev] branch criada: <area>/<N>-<slug>"
+  git checkout -b feat/<N>-<slug>
 else
-  git checkout "${BRANCH_EXISTS#origin/}"
-  git pull origin "${BRANCH_EXISTS#origin/}"
-  echo "[worker:dev] branch existente: ${BRANCH_EXISTS#origin/}"
+  git checkout "${BRANCH_EXISTS#origin/}" && git pull
 fi
 ```
 
@@ -125,36 +118,32 @@ Você é um subagente de dev. NÃO pergunte — implemente e retorne resultado.
 
 Issue: #<N> — <título>
 Repo: <url>
-Branch atual: <branch>
-Body da issue:
+Branch: <branch>
+Body:
 <body>
-
-Stack: <leia do CLAUDE.md ou AGENTS.md do repo>
 
 Raciocine passo a passo antes de retornar.
 
 Instruções:
-1. Leia o CLAUDE.md/AGENTS.md para entender convenções
+1. Leia CLAUDE.md ou AGENTS.md para convenções do projeto
 2. Implemente exatamente o que a issue pede — nada mais
-3. Siga as convenções do projeto
-4. Não toque em auth, billing, migrations sem risk:high explícito na issue
-5. Rode typecheck e testes se existirem
-6. git add <arquivos relevantes> && git commit -m "<tipo>(<área>): <descrição> (#<N>)"
-7. git push origin <branch>
+3. Não toque em auth, billing, migrations sem aprovação explícita na issue
+4. Rode typecheck e testes
+5. git add <arquivos> && git commit -m "feat: <descrição> (#<N>)" && git push origin <branch>
 
 Retorne:
 {
   "reasoning": "...",
   "arquivos_modificados": ["..."],
   "testes_passando": true | false | "sem testes",
-  "typecheck": "ok" | "erros pré-existentes" | "erros novos",
+  "typecheck": "ok" | "erros_preexistentes" | "erros_novos",
   "commit": "hash",
-  "pr_title": "tipo(área): descrição curta",
-  "pr_body": "## Summary\n...\n\nCloses #<N>"
+  "pr_title": "feat: descrição curta",
+  "pr_body": "## O que foi feito\n...\n\nCloses #<N>"
 }
 ```
 
-Após receber retorno — abrir PR:
+Após retorno — abrir PR:
 ```bash
 gh pr create \
   --title "<pr_title>" \
@@ -163,9 +152,14 @@ gh pr create \
   --head <branch>
 
 PR_N=$(gh pr list --head <branch> --json number -q '.[0].number')
-gh pr edit "$PR_N" --add-label "status:needs-review"
+gh pr edit "$PR_N" --add-label "status:in-progress" --add-label "worker:qa"
 
-echo "[worker:dev] ✓ implementação #<N> — PR #$PR_N aberta"
+# Remove worker:dev da issue (PR aberta, trabalho do dev terminou)
+gh issue edit <N> --remove-label "worker:dev"
+
+gh issue comment <N> \
+  --body "## 🚀 Implementado — dev\n\nPR #$PR_N aberta para revisão."
+echo "[worker:dev] ✓ #<N> — PR #$PR_N aberta → worker:qa"
 ```
 
 ---
@@ -174,4 +168,5 @@ echo "[worker:dev] ✓ implementação #<N> — PR #$PR_N aberta"
 
 ```bash
 echo "[worker:dev] ciclo concluído — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+exit 0
 ```

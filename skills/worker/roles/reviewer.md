@@ -1,28 +1,27 @@
 # role: reviewer (executor)
 
 **Cadência:** 10 minutos
-**Responsabilidade:** mergear PRs assignadas com qa-approved.
+**Responsabilidade:** mergear PRs com worker:reviewer.
 
-O reviewer nunca escolhe PR. Só mergeia o que está assignado a ele.
-Não analisa código — confia no veredicto do QA.
+O reviewer não analisa código — confia no veredicto do QA.
+Só verifica CI e conflitos antes de mergear.
 
 ---
 
 ## Fase 1 — BUSCAR
 
 ```bash
-echo "[worker:reviewer] buscando PRs assignadas para merge..."
+echo "[worker:reviewer] buscando PRs para mergear..."
 
 MY_PRS=$(gh pr list --state open \
-  --assignee @me \
-  --label "status:qa-approved" \
-  --json number,title,body,headRefName,labels,statusCheckRollup)
+  --label "worker:reviewer" \
+  --json number,title,body,headRefName,statusCheckRollup,mergeable)
 
 TOTAL=$(echo "$MY_PRS" | jq length)
 echo "[worker:reviewer] PRs para mergear: $TOTAL"
 
 if [ "$TOTAL" -eq 0 ]; then
-  echo "[worker:reviewer] 😴 nada assignado — cochilando"
+  echo "[worker:reviewer] 😴 nada com worker:reviewer — saindo"
   exit 0
 fi
 ```
@@ -35,22 +34,16 @@ Para cada PR em `MY_PRS`:
 
 ```bash
 echo "[worker:reviewer] → mergeando PR #<N> — <título>"
-```
 
-**Verificações antes do merge:**
-```bash
 # 1. CI passando?
-CI_STATUS=$(gh pr view <N> --json statusCheckRollup \
+CI_FAILING=$(gh pr view <N> --json statusCheckRollup \
   -q '[.statusCheckRollup[] | select(.conclusion == "FAILURE" or .conclusion == "TIMED_OUT")] | length')
 
-if [ "$CI_STATUS" -gt 0 ]; then
-  gh pr edit <N> \
-    --remove-label "status:qa-approved" \
-    --add-label "status:qa-blocked" \
-    --remove-assignee @me
+if [ "$CI_FAILING" -gt 0 ]; then
+  gh pr edit <N> --remove-label "worker:reviewer" --add-label "worker:dev"
   gh pr comment <N> \
-    --body "## ⚠️ Merge bloqueado — CI falhando\n\nCI falhou após QA aprovação. PR retornada para qa-blocked.\nTeam-manager assignará dev para corrigir."
-  echo "[worker:reviewer] ✗ PR #<N> — CI falhando, retornada para qa-blocked (assignee removido)"
+    --body "## ⚠️ Merge bloqueado — CI falhando\n\nCI falhou após aprovação do QA. Retornado para correção."
+  echo "[worker:reviewer] ✗ PR #<N> — CI falhando → worker:dev"
   continue
 fi
 
@@ -58,44 +51,37 @@ fi
 MERGEABLE=$(gh pr view <N> --json mergeable -q '.mergeable')
 if [ "$MERGEABLE" != "MERGEABLE" ]; then
   AUTHOR=$(gh pr view <N> --json author -q '.author.login')
-  gh pr edit <N> \
-    --remove-label "status:qa-approved" \
-    --add-label "status:qa-blocked" \
-    --remove-assignee @me
+  gh pr edit <N> --remove-label "worker:reviewer" --add-label "worker:dev"
   gh pr comment <N> \
-    --body "## ⚠️ Merge bloqueado — conflitos\n\nPR tem conflitos com main. @$AUTHOR resolva os conflitos com \`git rebase main\`.\nTeam-manager assignará dev para corrigir."
-  echo "[worker:reviewer] ✗ PR #<N> — conflitos, retornada para qa-blocked (assignee removido)"
+    --body "## ⚠️ Merge bloqueado — conflitos\n\nPR tem conflitos com main.\n\nCorrija com: \`git fetch origin && git rebase origin/main\`"
+  echo "[worker:reviewer] ✗ PR #<N> — conflito → worker:dev"
   continue
 fi
-```
 
-**Merge:**
-```bash
+# 3. Mergear
 gh pr merge <N> --squash --auto
 
-# --auto enfileira o merge quando CI passar — não mergeia imediatamente.
-# Verifica se auto-merge foi habilitado (não se já mergeou).
 AUTO_MERGE=$(gh pr view <N> --json autoMergeRequest -q '.autoMergeRequest // empty')
 
 if [ -n "$AUTO_MERGE" ]; then
-  echo "[worker:reviewer] ✓ PR #<N> — auto-merge enfileirado, aguardando CI"
-  gh pr edit <N> --remove-assignee @me
+  gh pr edit <N> --remove-label "worker:reviewer"
+  gh pr comment <N> --body "## 🔀 Auto-merge enfileirado — reviewer\n\nAguardando CI para merge final."
+  echo "[worker:reviewer] ✓ PR #<N> — auto-merge enfileirado"
 else
-  # Já mergeada imediatamente (sem CI) ou falhou
   PR_STATE=$(gh pr view <N> --json state -q '.state')
   if [ "$PR_STATE" = "MERGED" ]; then
-    echo "[worker:reviewer] ✓ PR #<N> mergeada com sucesso"
-    gh pr edit <N> --remove-assignee @me 2>/dev/null || true
+    gh pr comment <N> --body "## ✅ Mergeado — reviewer"
+    echo "[worker:reviewer] ✓ PR #<N> mergeada"
 
-    # Verifica se issue foi fechada automaticamente
-    ISSUE_REF=$(gh pr view <N> --json body -q '.body' | grep -oE '(Closes|Fixes|Resolves) #[0-9]+' | head -1)
-    if [ -n "$ISSUE_REF" ]; then
-      ISSUE_N=$(echo "$ISSUE_REF" | grep -oE '[0-9]+')
-      ISSUE_STATE=$(gh issue view "$ISSUE_N" --json state -q '.state' 2>/dev/null)
-      if [ "$ISSUE_STATE" = "OPEN" ]; then
+    # Fechar issue vinculada se não fechou automaticamente
+    ISSUE_N=$(gh pr view <N> --json body -q '.body' \
+      | grep -oE '(Closes|Fixes|Resolves) #[0-9]+' | head -1 | grep -oE '[0-9]+')
+    if [ -n "$ISSUE_N" ]; then
+      STATE=$(gh issue view "$ISSUE_N" --json state -q '.state' 2>/dev/null)
+      if [ "$STATE" = "OPEN" ]; then
         gh issue close "$ISSUE_N" \
-          --comment "## ✅ Fechada pelo reviewer\n\nPR #<N> mergeada. Issue fechada manualmente pois fechamento automático não ocorreu."
-        echo "[worker:reviewer] ✓ issue #$ISSUE_N fechada manualmente"
+          --comment "## ✅ Fechada — reviewer\n\nPR #<N> mergeada."
+        echo "[worker:reviewer] ✓ issue #$ISSUE_N fechada"
       fi
     fi
   else
@@ -110,4 +96,5 @@ fi
 
 ```bash
 echo "[worker:reviewer] ciclo concluído — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+exit 0
 ```
