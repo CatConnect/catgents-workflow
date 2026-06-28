@@ -105,19 +105,22 @@ Nunca verifique o próprio trabalho. Spawne subagente independente para análise
 
 ## Contrato de ciclo
 
+Cada invocação do worker executa exatamente uma vez e termina. O agendamento
+é responsabilidade da plataforma — o worker não faz sleep nem loop.
+
 ```
-CICLO {
+INVOCAÇÃO {
   fase 1: BUSCAR   — o que está assignado a mim agora?
   fase 2: EXECUTAR — fazer o trabalho (definido em roles/<papel>.md)
   fase 3: REPORTAR — comentar resultado no GitHub
-  fase 4: SLEEP    — aguardar próximo ciclo
+  → exit 0
 }
 ```
 
 ### Fase 1 — BUSCAR
 
 Cada worker tem sua própria query. Definida em `roles/<papel>.md`.
-Se não há nada assignado → vá direto para SLEEP.
+Se não há nada assignado → log + `exit 0` imediato.
 
 ### Fase 2 — EXECUTAR
 
@@ -154,26 +157,10 @@ Comente no GitHub o resultado de cada ação relevante.
 Formato mínimo: o que foi feito, qual o resultado, próximo passo esperado.
 Ciclos sem trabalho não geram comentário.
 
-### Fase 4 — SLEEP
-
 ```bash
-sleep <sleep_interval>
+echo "[worker:<papel>] ciclo concluído — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+exit 0
 ```
-
-**Backoff quando sem trabalho:**
-```
-ciclos_sem_trabalho++
-sleep_atual = min(sleep_atual × 2, sleep_max)
-```
-Após 5 ciclos sem trabalho: dobra o `sleep_interval` base permanentemente até trabalho aparecer.
-
-**Log de ciclo:**
-```
-[worker:<papel>] <timestamp> — assignados: <N> | ações: <lista> | próximo: <Xs>
-[worker:<papel>] 😴 nada assignado — cochilando <Xs>
-```
-
-O worker nunca encerra sozinho — só para quando você fechar o terminal.
 
 ---
 

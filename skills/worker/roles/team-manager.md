@@ -10,7 +10,7 @@ Ele nunca implementa, nunca revisa código, nunca mergeia — só orquestra.
 
 ## Inicialização — Normalizar labels do repo
 
-Execute **uma única vez** antes do loop. Garante que o repo usa exatamente
+Execute **uma única vez** por invocação, antes do BUSCAR. Garante que o repo usa exatamente
 o padrão de labels da skill — sem truncadas, duplicatas ou aliases.
 
 ```bash
