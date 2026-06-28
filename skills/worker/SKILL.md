@@ -39,14 +39,13 @@ Executada **uma única vez** antes do loop. Se qualquer passo falhar — pare e 
 
 ### 0.1 — Verificar pré-requisitos
 
-**IMPORTANTE:** Não troque de diretório. Rode todos os comandos no diretório atual da sessão.
-Se o usuário abriu o terminal no diretório errado, pare e avise — não tente `cd` para outro projeto.
+**NUNCA faça `cd` para outro diretório.** Rode tudo no diretório atual da sessão.
+Se precisar de um diretório para rodar bash, use `$PWD` — não mude para outro projeto.
 
 ```bash
 gh auth status
-gh repo view --json name,url 2>/dev/null || echo "FAIL"
 ```
-Falha → `[worker:<papel>] ❌ Terminal não está dentro de um clone do repositório alvo. Abra o terminal dentro do clone correto e tente novamente.`
+Falha → `[worker:<papel>] ❌ gh não autenticado. Rode: gh auth login`
 
 ### 0.2 — Garantir labels
 ```bash
